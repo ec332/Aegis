@@ -1,7 +1,11 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
 #include <array>
 #include <string_view>
 #include <optional>
 #include <string>
+
 
 enum class ConfigType {
     Dev,
@@ -49,3 +53,5 @@ private:
         return std::nullopt;
     }
 };
+
+#endif

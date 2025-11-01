@@ -1,4 +1,3 @@
-// Implementation of Config::GetConfigFilename
 #include "config.h"
 #include <cstdlib>    // std::getenv
 #include <algorithm>  // std::transform
