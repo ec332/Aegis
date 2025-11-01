@@ -1,0 +1,8 @@
+listeners:
+  - address: 127.0.0.1
+    port: 8080
+
+db_clients:
+  - name: default
+    connection_string: "host=127.0.0.1 port=5432 dbname=aegis user=postgres password=postgres sslmode=disable"
+    is_fast: true
