@@ -35,6 +35,13 @@ function(scaffold_setup_dependencies)
       "SPDLOG_FMT_EXTERNAL ON")
     endif()
 
+    # Drogon web framework
+    # Try to use a pre-installed package first; if not available, fetch the source via CPM.
+    if(NOT TARGET Drogon::Drogon AND NOT TARGET drogon)
+        # Fetch Drogon from GitHub. Using master for broad compatibility across platforms.
+        cpmaddpackage("gh:drogonframework/drogon#master")
+    endif()
+
     if(BUILD_TESTING)
         if(NOT TARGET Catch2::Catch2WithMain)
             cpmaddpackage("gh:catchorg/Catch2@3.8.1")
