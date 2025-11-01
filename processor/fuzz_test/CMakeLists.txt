@@ -8,7 +8,7 @@ target_link_libraries(
   fuzz_tester
   PRIVATE scaffold_options
           scaffold_warnings
-          fmt::fmt
+          fmt::fmt-header-only
           -coverage
           -fsanitize=fuzzer)
 target_compile_options(fuzz_tester PRIVATE -fsanitize=fuzzer)

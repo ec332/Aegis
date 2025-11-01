@@ -8,8 +8,19 @@ function(scaffold_setup_dependencies)
     # For each dependency, see if it's
     # already been provided to us by a parent project
 
-    if(NOT TARGET fmtlib::fmtlib)
-        cpmaddpackage("gh:fmtlib/fmt#11.1.4")
+    # Prefer the canonical fmt target name and fall back if needed
+    if(NOT TARGET fmt::fmt AND NOT TARGET fmtlib::fmtlib)
+        cpmaddpackage(
+          NAME fmt
+          GITHUB_REPOSITORY "fmtlib/fmt"
+          GIT_TAG 11.1.4
+          OPTIONS "FMT_HEADER_ONLY ON"
+        )
+    endif()
+
+    # Ensure fmt compiled sources have stdlib declarations even under strict include removal
+    if(TARGET fmt)
+        target_compile_options(fmt PRIVATE $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:-include stdlib.h>)
     endif()
 
     if(NOT TARGET spdlog::spdlog)
