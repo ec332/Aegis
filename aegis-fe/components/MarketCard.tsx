@@ -28,11 +28,15 @@ export default function MarketCard({
 
       {/* Options (Buttons) */}
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4 justify-center">
-        {options.map((option) => (
+        {options.map((option, index) => (
           <button
             key={option.id}
             onClick={() => onOptionClick?.(option)}
-            className="px-6 py-3 bg-[#151b4d] text-white rounded-md hover:bg-[#1a2159] transition-colors font-medium flex-1"
+            className={`px-6 py-3 text-white rounded-md transition-colors font-medium flex-1 ${
+              index % 2 === 0
+                ? "bg-[#151b4d] hover:bg-[#1a2159]"
+                : "bg-[#8a704d] hover:bg-[#9d7e5a]"
+            }`}
           >
             {option.title}
           </button>

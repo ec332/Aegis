@@ -25,5 +25,6 @@ export interface Transaction {
   market_id: string; // UUID FK
   option_id: string; // UUID FK
   transaction_type: string; // "buy" | "sell"
+  price: number; // Transaction price (float)
   created_at: string; // ISO timestamp
 }

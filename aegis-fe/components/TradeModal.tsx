@@ -17,6 +17,9 @@ export default function TradeModal({
   initialTransaction,
 }: TradeModalProps) {
   const [selectedOption, setSelectedOption] = useState<Option | null>(null);
+  const [price, setPrice] = useState<string>(
+    initialTransaction?.price.toString() || ""
+  );
 
   // Pre-fill form if editing
   useEffect(() => {
@@ -27,6 +30,7 @@ export default function TradeModal({
       if (option) {
         setSelectedOption(option);
       }
+      setPrice(initialTransaction.price.toString());
     }
   }, [initialTransaction, options]);
 
@@ -36,9 +40,14 @@ export default function TradeModal({
       alert("Please select an option");
       return;
     }
+    if (!price || parseFloat(price) <= 0) {
+      alert("Please enter a valid price");
+      return;
+    }
     console.log("Trade submitted:", {
       market: market.id,
       option: selectedOption.id,
+      price: parseFloat(price),
       isEdit: !!initialTransaction,
       transactionId: initialTransaction?.id,
     });
@@ -81,13 +90,15 @@ export default function TradeModal({
               Select Option
             </label>
             <div className="space-y-2">
-              {options.map((option) => (
+              {options.map((option, index) => (
                 <button
                   key={option.id}
                   onClick={() => setSelectedOption(option)}
                   className={`w-full px-4 py-3 rounded-md border-2 transition-colors font-medium text-left ${
                     selectedOption?.id === option.id
-                      ? "bg-[#151b4d] text-white border-[#151b4d]"
+                      ? index % 2 === 0
+                        ? "bg-[#151b4d] text-white border-[#151b4d]"
+                        : "bg-[#8a704d] text-white border-[#8a704d]"
                       : "bg-gray-50 text-gray-700 border-gray-200 hover:border-[#151b4d]"
                   }`}
                 >
@@ -111,6 +122,8 @@ export default function TradeModal({
               step="0.01"
               min="0"
               placeholder="0.00"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-[#151b4d] focus:ring-2 focus:ring-[#151b4d] focus:ring-opacity-10"
             />
           </div>
