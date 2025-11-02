@@ -30,7 +30,7 @@ export default function TransactionItem({
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {/* Left: Transaction Details */}
         <div className="flex-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Market Title */}
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase">
@@ -53,6 +53,14 @@ export default function TransactionItem({
                 Option
               </label>
               <p className="text-sm font-medium text-gray-900">{option.title}</p>
+            </div>
+
+            {/* Price */}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">
+                Price
+              </label>
+              <p className="text-sm font-medium text-gray-900">${transaction.price.toFixed(2)}</p>
             </div>
             
             {/* Date */}

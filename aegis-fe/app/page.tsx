@@ -2,72 +2,31 @@
 
 import MarketCard from "@/components/MarketCard";
 import TradeModal from "@/components/TradeModal";
+import { useAppStore } from "@/store";
 import { Market, Option } from "@/types";
-import { useState } from "react";
-
-// Sample data - replace with API call
-const sampleMarkets: Market[] = [
-  {
-    id: "1",
-    title: "Will Bitcoin reach $100k?",
-    description: "Predict if BTC will hit $100k by end of 2024",
-    status: "Active",
-  },
-  {
-    id: "2",
-    title: "Will Ethereum outperform Bitcoin?",
-    description: "Predict ETH performance vs BTC in Q4",
-    status: "Active",
-  },
-  {
-    id: "3",
-    title: "Will AI stocks rally?",
-    description: "Predict the movement of AI-focused stocks",
-    status: "Active",
-  },
-  {
-    id: "5",
-    title: "Tech IPO Q4 2024",
-    description: "Will there be a major tech IPO?",
-    status: "Active",
-  },
-  {
-    id: "6",
-    title: "Gold price forecast",
-    description: "Will gold break $2500/oz?",
-    status: "Active",
-  },
-];
-
-const sampleOptions: { [key: string]: Option[] } = {
-  "1": [
-    { id: "opt1", market_id: "1", title: "Yes" },
-    { id: "opt2", market_id: "1", title: "No" },
-  ],
-  "2": [
-    { id: "opt3", market_id: "2", title: "Yes" },
-    { id: "opt4", market_id: "2", title: "No" },
-  ],
-  "3": [
-    { id: "opt5", market_id: "3", title: "Rally" },
-    { id: "opt6", market_id: "3", title: "Decline" },
-  ],
-  "5": [
-    { id: "opt9", market_id: "5", title: "Yes" },
-    { id: "opt10", market_id: "5", title: "No" },
-  ],
-};
+import { useEffect, useState } from "react";
 
 export default function Home() {
+  const { markets, marketOptions, initializeApp, loadOptionsForMarket } =
+    useAppStore();
   const [selectedMarket, setSelectedMarket] = useState<{
     market: Market;
     options: Option[];
   } | null>(null);
 
-  const handleOptionClick = (option: Option) => {
-    const market = sampleMarkets.find((m) => m.id === option.market_id);
-    const options = sampleOptions[option.market_id] || [];
+  // Initialize app on mount
+  useEffect(() => {
+    initializeApp();
+  }, [initializeApp]);
+
+  const handleOptionClick = async (option: Option) => {
+    const market = markets.find((m) => m.id === option.market_id);
     if (market) {
+      // Load options if not already loaded
+      if (!marketOptions[option.market_id]) {
+        await loadOptionsForMarket(option.market_id);
+      }
+      const options = marketOptions[option.market_id] || [];
       setSelectedMarket({ market, options });
     }
   };
@@ -99,16 +58,22 @@ export default function Home() {
           <h2 className="text-2xl font-bold text-[#151b4d] mb-8">
             Active Markets
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sampleMarkets.map((market) => (
-              <MarketCard
-                key={market.id}
-                market={market}
-                options={sampleOptions[market.id] || []}
-                onOptionClick={handleOptionClick}
-              />
-            ))}
-          </div>
+          {markets.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {markets.map((market) => (
+                <MarketCard
+                  key={market.id}
+                  market={market}
+                  options={marketOptions[market.id] || []}
+                  onOptionClick={handleOptionClick}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-600 text-lg">Loading markets...</p>
+            </div>
+          )}
         </div>
 
         {/* Trade Modal */}
