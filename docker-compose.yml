@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: transaction
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/create.sql:/docker-entrypoint-initdb.d/01_create.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d transaction"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  transaction-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: transaction
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+
+volumes:
+  pgdata:
