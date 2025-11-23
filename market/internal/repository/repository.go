@@ -212,11 +212,11 @@ func (r *Repository) UpdateMarket(ctx context.Context, marketID string, updates 
 // CreateUser creates a new user
 func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (id, wallet_address, balance, nonce, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO users (id, wallet_address, balance, nonce, role, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		user.ID, user.WalletAddress, user.Balance, user.Nonce,
+		user.ID, user.WalletAddress, user.Balance, user.Nonce, user.Role,
 		user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
@@ -229,12 +229,12 @@ func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
 func (r *Repository) GetUser(ctx context.Context, userID string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, wallet_address, balance, nonce, created_at, updated_at
+		SELECT id, wallet_address, balance, nonce, role, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(
-		&user.ID, &user.WalletAddress, &user.Balance, &user.Nonce,
+		&user.ID, &user.WalletAddress, &user.Balance, &user.Nonce, &user.Role,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -250,12 +250,12 @@ func (r *Repository) GetUser(ctx context.Context, userID string) (*models.User, 
 func (r *Repository) GetUserByWalletAddress(ctx context.Context, walletAddress string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, wallet_address, balance, nonce, created_at, updated_at
+		SELECT id, wallet_address, balance, nonce, role, created_at, updated_at
 		FROM users
 		WHERE wallet_address = $1
 	`
 	err := r.db.QueryRowContext(ctx, query, walletAddress).Scan(
-		&user.ID, &user.WalletAddress, &user.Balance, &user.Nonce,
+		&user.ID, &user.WalletAddress, &user.Balance, &user.Nonce, &user.Role,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -281,6 +281,11 @@ func (r *Repository) UpdateUser(ctx context.Context, userID string, updates mode
 	if updates.Nonce != nil {
 		query += fmt.Sprintf(", nonce = $%d", argCount)
 		args = append(args, *updates.Nonce)
+		argCount++
+	}
+	if updates.Role != nil {
+		query += fmt.Sprintf(", role = $%d", argCount)
+		args = append(args, *updates.Role)
 		argCount++
 	}
 
@@ -425,11 +430,13 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 		wallet_address VARCHAR(255) NOT NULL UNIQUE,
 		balance DECIMAL(20, 8) NOT NULL DEFAULT 0,
 		nonce TEXT NOT NULL,
+		role VARCHAR(50) NOT NULL DEFAULT 'user',
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address);
+	CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 	`
 
 	_, err := r.db.ExecContext(ctx, schema)

@@ -264,6 +264,7 @@ func (s *Service) CreateUser(ctx context.Context, req models.CreateUserRequest) 
 		WalletAddress: req.WalletAddress,
 		Balance:       req.Balance,
 		Nonce:         nonce,
+		Role:          models.UserRoleUser, // Default to user role
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}

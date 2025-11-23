@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package wallet;
+
+option go_package = "github.com/aegis/proto/wallet";
+
+import "google/protobuf/timestamp.proto";
+
+// Wallet Service
+service WalletService {
+  rpc CreateWalletAccount(CreateWalletAccountRequest) returns (CreateWalletAccountResponse);
+  rpc GetWalletAccount(GetWalletAccountRequest) returns (GetWalletAccountResponse);
+  rpc GetWalletAccountByUserID(GetWalletAccountByUserIDRequest) returns (GetWalletAccountByUserIDResponse);
+  rpc UpdateWalletAccount(UpdateWalletAccountRequest) returns (UpdateWalletAccountResponse);
+  
+  // Transaction operations
+  rpc Deposit(DepositRequest) returns (DepositResponse);
+  rpc Withdrawal(WithdrawalRequest) returns (WithdrawalResponse);
+  rpc DebitWallet(DebitWalletRequest) returns (DebitWalletResponse);
+  rpc CreditWallet(CreditWalletRequest) returns (CreditWalletResponse);
+  
+  // Transaction queries
+  rpc GetWalletTransactions(GetWalletTransactionsRequest) returns (GetWalletTransactionsResponse);
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
+  rpc SettleTransaction(SettleTransactionRequest) returns (SettleTransactionResponse);
+}
+
+// Wallet messages
+message WalletAccount {
+  string id = 1;
+  string user_id = 2;
+  string address = 3;
+  string currency = 4;
+  double total_balance = 5;
+  double available_balance = 6;
+  string status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message WalletTransaction {
+  string id = 1;
+  string wallet_id = 2;
+  string market_id = 3;
+  string type = 4;
+  double amount = 5;
+  string status = 6;
+  string reference_id = 7;
+  string metadata = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// Wallet account requests/responses
+message CreateWalletAccountRequest {
+  string user_id = 1;
+  string currency = 2;
+}
+
+message CreateWalletAccountResponse {
+  WalletAccount account = 1;
+}
+
+message GetWalletAccountRequest {
+  string id = 1;
+}
+
+message GetWalletAccountResponse {
+  WalletAccount account = 1;
+}
+
+message GetWalletAccountByUserIDRequest {
+  string user_id = 1;
+  string currency = 2;
+}
+
+message GetWalletAccountByUserIDResponse {
+  WalletAccount account = 1;
+}
+
+message UpdateWalletAccountRequest {
+  string id = 1;
+  string user_id = 2;
+  string address = 3;
+  string currency = 4;
+  double total_balance = 5;
+  double available_balance = 6;
+  string status = 7;
+}
+
+message UpdateWalletAccountResponse {
+  WalletAccount account = 1;
+}
+
+// Transaction requests/responses
+message DepositRequest {
+  string account_id = 1;
+  double amount = 2;
+  string reference_id = 3;
+}
+
+message DepositResponse {
+  WalletTransaction transaction = 1;
+}
+
+message WithdrawalRequest {
+  string account_id = 1;
+  double amount = 2;
+  string reference_id = 3;
+}
+
+message WithdrawalResponse {
+  WalletTransaction transaction = 1;
+}
+
+message DebitWalletRequest {
+  string account_id = 1;
+  double amount = 2;
+  string market_id = 3;
+  string reference_id = 4;
+}
+
+message DebitWalletResponse {
+  WalletTransaction transaction = 1;
+}
+
+message CreditWalletRequest {
+  string account_id = 1;
+  double amount = 2;
+  string market_id = 3;
+  string reference_id = 4;
+}
+
+message CreditWalletResponse {
+  WalletTransaction transaction = 1;
+}
+
+message GetWalletTransactionsRequest {
+  string account_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetWalletTransactionsResponse {
+  repeated WalletTransaction transactions = 1;
+  int32 total = 2;
+}
+
+message GetTransactionRequest {
+  string id = 1;
+}
+
+message GetTransactionResponse {
+  WalletTransaction transaction = 1;
+}
+
+message SettleTransactionRequest {
+  string id = 1;
+  string reference_id = 2;
+}
+
+message SettleTransactionResponse {
+  WalletTransaction transaction = 1;
+}

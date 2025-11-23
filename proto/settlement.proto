@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package settlement;
+
+option go_package = "github.com/aegis/proto/settlement";
+
+import "google/protobuf/timestamp.proto";
+
+// Settlement Service
+service SettlementService {
+  rpc CreateSettlement(CreateSettlementRequest) returns (CreateSettlementResponse);
+  rpc GetSettlement(GetSettlementRequest) returns (GetSettlementResponse);
+  rpc GetSettlementByMarketID(GetSettlementByMarketIDRequest) returns (GetSettlementResponse);
+  rpc CompleteSettlement(CompleteSettlementRequest) returns (CompleteSettlementResponse);
+  
+  // Wallet integration for payouts
+  rpc ProcessPayout(ProcessPayoutRequest) returns (ProcessPayoutResponse);
+}
+
+// Settlement messages
+message Settlement {
+  string id = 1;
+  string market_id = 2;
+  string winning_option_id = 3;
+  double total_pool = 4;
+  double winning_pool = 5;
+  string status = 6;
+  google.protobuf.Timestamp settled_at = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message SettlementDistribution {
+  string id = 1;
+  string settlement_id = 2;
+  string user_id = 3;
+  double amount = 4;
+  string status = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// Settlement requests/responses
+message CreateSettlementRequest {
+  string market_id = 1;
+  string winning_option_id = 2;
+}
+
+message CreateSettlementResponse {
+  Settlement settlement = 1;
+  string message = 2;
+}
+
+message GetSettlementRequest {
+  string id = 1;
+}
+
+message GetSettlementResponse {
+  Settlement settlement = 1;
+}
+
+message GetSettlementByMarketIDRequest {
+  string market_id = 1;
+}
+
+message CompleteSettlementRequest {
+  string id = 1;
+}
+
+message CompleteSettlementResponse {
+  Settlement settlement = 1;
+  string message = 2;
+}
+
+// Payout messages
+message ProcessPayoutRequest {
+  string user_id = 1;
+  double amount = 2;
+  string settlement_id = 3;
+  string reference_id = 4;
+}
+
+message ProcessPayoutResponse {
+  bool success = 1;
+  string transaction_id = 2;
+  string message = 3;
+}
