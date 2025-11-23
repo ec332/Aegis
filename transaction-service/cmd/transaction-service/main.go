@@ -13,8 +13,8 @@ import (
     "github.com/spf13/viper"
     "go.uber.org/zap"
 
-    httpHandlers "aegis/internal/http"
-    "aegis/internal/log"
+    httpHandlers "transaction-service/internal/http"
+    "transaction-service/internal/log"
 )
 
 func main() {
