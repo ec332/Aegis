@@ -29,6 +29,88 @@ func CreateMarket(svc *service.Service) http.HandlerFunc {
 	}
 }
 
+// CreateUser handles POST /users
+func CreateUser(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req models.CreateUserRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid request body", err)
+			return
+		}
+
+		user, err := svc.CreateUser(r.Context(), req)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Failed to create user", err)
+			return
+		}
+
+		respondJSON(w, http.StatusCreated, user)
+	}
+}
+
+// GetUser handles GET /users/{userId}
+func GetUser(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := chi.URLParam(r, "userId")
+		if userID == "" {
+			respondError(w, http.StatusBadRequest, "User ID is required", nil)
+			return
+		}
+
+		user, err := svc.GetUser(r.Context(), userID)
+		if err != nil {
+			respondError(w, http.StatusNotFound, "User not found", err)
+			return
+		}
+
+		respondJSON(w, http.StatusOK, user)
+	}
+}
+
+// GetUserByWallet handles GET /users/wallet/{walletAddress}
+func GetUserByWallet(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		walletAddress := chi.URLParam(r, "walletAddress")
+		if walletAddress == "" {
+			respondError(w, http.StatusBadRequest, "Wallet address is required", nil)
+			return
+		}
+
+		user, err := svc.GetUserByWalletAddress(r.Context(), walletAddress)
+		if err != nil {
+			respondError(w, http.StatusNotFound, "User not found", err)
+			return
+		}
+
+		respondJSON(w, http.StatusOK, user)
+	}
+}
+
+// UpdateUser handles PUT /users/{userId}
+func UpdateUser(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := chi.URLParam(r, "userId")
+		if userID == "" {
+			respondError(w, http.StatusBadRequest, "User ID is required", nil)
+			return
+		}
+
+		var req models.UpdateUserRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid request body", err)
+			return
+		}
+
+		user, err := svc.UpdateUser(r.Context(), userID, req)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Failed to update user", err)
+			return
+		}
+
+		respondJSON(w, http.StatusOK, user)
+	}
+}
+
 // ListMarkets handles GET /markets
 func ListMarkets(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
