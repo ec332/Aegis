@@ -13,36 +13,66 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./transaction-service/sql/create.sql:/docker-entrypoint-initdb.d/01_create.sql:ro
       - ./market/sql/create.sql:/docker-entrypoint-initdb.d/02_create_market.sql:ro
-      - ./wallet-service/sql/create.sql:/docker-entrypoint-initdb.d/03_create_wallet.sql:ro
-      - ./settlement-service/sql/create.sql:/docker-entrypoint-initdb.d/04_create_settlement.sql:ro
+      - ./wallet/sql/create.sql:/docker-entrypoint-initdb.d/03_create_wallet.sql:ro
+      - ./settlement/sql/create.sql:/docker-entrypoint-initdb.d/04_create_settlement.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 10
 
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api-gateway:
     build:
-      context: ./api-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api-gateway/Dockerfile
     environment:
       PORT: 8080
-      MARKET_SERVICE_URL: http://market-service:8081
-      WALLET_SERVICE_URL: http://wallet-service:8082
-      SETTLEMENT_SERVICE_URL: http://settlement-service:8084
-      TRANSACTION_SERVICE_URL: http://transaction-service:5555
+      MARKET_SERVICE_GRPC_ADDR: market-service:50051
+      WALLET_SERVICE_GRPC_ADDR: wallet-service:50052
+      SETTLEMENT_SERVICE_GRPC_ADDR: settlement-service:50053
+      KAFKA_BROKERS: kafka:9092
     depends_on:
       - market-service
       - wallet-service
       - settlement-service
-      - transaction-service
+      - kafka
     ports:
       - "8080:8080"
 
   transaction-service:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: transaction-service/Dockerfile
     environment:
       APP_DB_HOST: postgres
       APP_DB_PORT: 5432
@@ -58,15 +88,15 @@ services:
 
   market-service:
     build:
-      context: ./market
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: market/Dockerfile
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: aegis_market
       DB_USER: postgres
       DB_PASSWORD: postgres
-      PORT: 8081
+      GRPC_PORT: 50051
       REDIS_HOST: redis
       REDIS_PORT: 6379
     depends_on:
@@ -75,7 +105,8 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8081:8081"
+      - "8081:8081"  # HTTP port
+      - "50051:50051" # gRPC port
 
   redis:
     image: redis:7-alpine
@@ -89,37 +120,40 @@ services:
 
   settlement-service:
     build:
-      context: ./settlement-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: settlement/Dockerfile
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: aegis_settlement
       DB_USER: postgres
       DB_PASSWORD: postgres
-      PORT: 8084
+      GRPC_PORT: 50053
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8084:8084"
+      - "8084:8084"  # HTTP port
+      - "50053:50053" # gRPC port
 
   wallet-service:
     build:
-      context: ./wallet-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: wallet/Dockerfile
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: aegis_wallet
       DB_USER: postgres
       DB_PASSWORD: postgres
-      PORT: 8082
+      GRPC_PORT: 50052
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8082:8082"
+      - "8082:8082"  # HTTP port
+      - "50052:50052" # gRPC port
 
 volumes:
   pgdata:
+  kafka-data:

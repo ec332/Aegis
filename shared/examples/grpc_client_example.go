@@ -84,7 +84,8 @@ func main() {
 
 	// Check metrics
 	serviceMetrics := marketClient.GetMetrics()
-	logger.Info("Service metrics collected")
+	logger.Info("Service metrics collected",
+		zap.Any("metrics", serviceMetrics))
 
 	// Configure wallet service client
 	walletConfig := grpc.DefaultClientConfig("wallet", "localhost:50052")

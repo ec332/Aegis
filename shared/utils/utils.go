@@ -139,3 +139,57 @@ func GetEnvOrDefaultDuration(key string, defaultValue time.Duration) time.Durati
 	}
 	return defaultValue
 }
+
+// Common error variables
+var (
+	ErrServiceUnavailable = NewServiceError(ErrCodeServiceUnavail, "service unavailable")
+)
+
+// IsTimeoutError checks if an error is a timeout error
+func IsTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	var serviceErr *ServiceError
+	if errors.As(err, &serviceErr) {
+		return serviceErr.Code == ErrCodeTimeout
+	}
+	
+	return false
+}
+
+// IsServiceUnavailableError checks if an error is a service unavailable error
+func IsServiceUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	var serviceErr *ServiceError
+	if errors.As(err, &serviceErr) {
+		return serviceErr.Code == ErrCodeServiceUnavail
+	}
+	
+	return false
+}
+
+// KafkaFallbackError represents an error that occurred when falling back to Kafka
+type KafkaFallbackError struct {
+	OriginalError error
+}
+
+func (e *KafkaFallbackError) Error() string {
+	return fmt.Sprintf("kafka fallback error: %v", e.OriginalError)
+}
+
+func (e *KafkaFallbackError) Unwrap() error {
+	return e.OriginalError
+}
+
+// NewKafkaFallbackError creates a new Kafka fallback error
+func NewKafkaFallbackError(originalErr error) error {
+	if originalErr == nil {
+		return nil
+	}
+	return &KafkaFallbackError{OriginalError: originalErr}
+}

@@ -89,13 +89,13 @@ func (c *HTTPClient) Call(ctx context.Context, method, url string, body interfac
 
 	// Check status code
 	if resp.StatusCode >= 500 {
-		return utils.NewServiceError(utils.ErrCodeServiceUnavail, 
+		return utils.NewServiceErrorWithDetails(utils.ErrCodeServiceUnavail, 
 			fmt.Sprintf("service unavailable: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
 			string(responseBody))
 	}
 
 	if resp.StatusCode >= 400 {
-		return utils.NewServiceError(utils.ErrCodeInvalidRequest, 
+		return utils.NewServiceErrorWithDetails(utils.ErrCodeInvalidRequest, 
 			fmt.Sprintf("request failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
 			string(responseBody))
 	}

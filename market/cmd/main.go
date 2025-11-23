@@ -5,21 +5,26 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"github.com/ec332/aegis/market/internal/api"
-	"github.com/ec332/aegis/market/internal/middleware"
+
+	market "github.com/aegis/proto/gen/market"
+	grpcserver "github.com/aegis/shared/grpc"
+	"github.com/aegis/shared/metrics"
+	"github.com/aegis/shared/utils"
+	marketgrpc "github.com/ec332/aegis/market/internal/grpc"
 	"github.com/ec332/aegis/market/internal/repository"
 	"github.com/ec332/aegis/market/internal/service"
 	"github.com/ec332/aegis/market/pkg/config"
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -30,111 +35,107 @@ func main() {
 	}
 	log.Println("Configuration loaded")
 
+	// Initialize logger
+	logger, err := utils.NewLogger("market-service")
+	if err != nil {
+		log.Fatalf("Failed to create logger: %v", err)
+	}
+	defer logger.Sync()
+	logger.Info("Logger initialized")
+
 	// Initialize database
 	db, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatal("Failed to connect to database", zap.Error(err))
 	}
 	defer db.Close()
+
 	// Test database connection
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		logger.Fatal("Failed to ping database", zap.Error(err))
 	}
-	log.Println("PostgreSQL connected")
+	logger.Info("PostgreSQL connected")
 
 	// Initialize schema
 	repo := repository.New(db)
 	ctx := context.Background()
 	if err := repo.InitSchema(ctx); err != nil {
-		log.Fatalf("Failed to initialize schema: %v", err)
+		logger.Fatal("Failed to initialize schema", zap.Error(err))
 	}
-	log.Println("Database schema initialized")
+	logger.Info("Database schema initialized")
 
 	// Initialize Redis client
 	redisOpts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("Failed to parse Redis URL: %v", err)
+		logger.Fatal("Failed to parse Redis URL", zap.Error(err))
 	}
 	redisClient := redis.NewClient(redisOpts)
 	defer redisClient.Close()
 
 	// Test Redis connection
 	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		logger.Fatal("Failed to connect to Redis", zap.Error(err))
 	}
-	log.Println("Redis connected")
+	logger.Info("Redis connected")
 
 	// Initialize service
 	svc := service.New(repo, redisClient)
-	log.Println("Service initialized")
+	logger.Info("Service initialized")
 
-	// Setup router
-	r := chi.NewRouter()
+	// Create metrics registry
+	metricsRegistry := metrics.NewRegistry(logger)
+	
+	// Create gRPC server
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(grpcserver.UnaryServerInterceptor(logger, grpcserver.NewServerMetrics("market", metricsRegistry))),
+		grpc.StreamInterceptor(grpcserver.StreamServerInterceptor(logger, grpcserver.NewServerMetrics("market", metricsRegistry))),
+	)
 
-	// Middleware
-	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.RealIP)
-	r.Use(middleware.Logging)
-	r.Use(middleware.Recovery)
-	r.Use(chimiddleware.Timeout(10 * time.Second))
+	// Register market service
+	marketServer := marketgrpc.NewServer(svc, logger)
+	market.RegisterMarketServiceServer(grpcServer, marketServer)
+	
+	// Register health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	
+	// Set health status
+	healthServer.SetServingStatus("market.MarketService", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	// CORS
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-User-ID", "X-Service-Key"},
-		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
-
-	// Health check
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
-
-	// API routes
-	r.Post("/markets", api.CreateMarket(svc))
-	r.Get("/markets", api.ListMarkets(svc))
-	r.Get("/markets/{marketId}", api.GetMarket(svc))
-	r.Put("/markets/{marketId}", api.UpdateMarket(svc))
-	r.Get("/markets/{marketId}/stream", api.StreamLiquidityUpdates(svc))
-
-	// User routes
-	r.Post("/users", api.CreateUser(svc))
-	r.Get("/users/{userId}", api.GetUser(svc))
-	r.Get("/users/wallet/{walletAddress}", api.GetUserByWallet(svc))
-	r.Put("/users/{userId}", api.UpdateUser(svc))
-
-	// Start server
+	// Create listener
 	addr := fmt.Sprintf(":%s", cfg.Port)
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		logger.Fatal("Failed to create listener", zap.Error(err))
 	}
 
-	// Graceful shutdown
+	// Start server
 	go func() {
-		log.Printf("Market service starting on %s", addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+		logger.Info("Market service starting", zap.String("address", addr))
+		if err := grpcServer.Serve(lis); err != nil {
+			logger.Fatal("Failed to serve gRPC", zap.Error(err))
 		}
 	}()
 
+	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	
+	logger.Info("Shutting down server...")
+	
+	// Graceful shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
-
-	log.Println("Server exited")
+	
+	// Set health status to not serving
+	healthServer.SetServingStatus("market.MarketService", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	
+	// Stop accepting new connections
+	grpcServer.GracefulStop()
+	
+	// Wait for ongoing RPCs to complete
+	<-shutdownCtx.Done()
+	
+	logger.Info("Server exited")
 }
