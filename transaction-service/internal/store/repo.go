@@ -5,7 +5,7 @@ import (
 
     "github.com/google/uuid"
 
-    "aegis/internal/model"
+    "transaction-service/internal/model"
 )
 
 type Repository interface {

@@ -7,8 +7,8 @@ import (
     "github.com/google/uuid"
     "github.com/shopspring/decimal"
 
-    "aegis/internal/model"
-    "aegis/internal/store"
+    "transaction-service/internal/model"
+    "transaction-service/internal/store"
 )
 
 type TransactionService struct { repo store.Repository }

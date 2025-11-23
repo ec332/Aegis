@@ -10,8 +10,8 @@ import (
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/shopspring/decimal"
 
-    "aegis/internal/model"
-    "aegis/internal/store"
+    "transaction-service/internal/model"
+    "transaction-service/internal/store"
 )
 
 type Repository struct {

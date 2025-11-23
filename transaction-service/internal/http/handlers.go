@@ -11,10 +11,10 @@ import (
     "github.com/jackc/pgx/v5/pgxpool"
     "go.uber.org/zap"
 
-    "aegis/internal/model"
-    "aegis/internal/service"
-    storeiface "aegis/internal/store"
-    storepg "aegis/internal/store/postgres"
+    "transaction-service/internal/model"
+    "transaction-service/internal/service"
+    storeiface "transaction-service/internal/store"
+    storepg "transaction-service/internal/store/postgres"
 )
 
 type Handler struct { svc *service.TransactionService; logger *zap.Logger }

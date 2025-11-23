@@ -8,8 +8,8 @@ import (
 
     "github.com/google/uuid"
 
-    "aegis/internal/model"
-    "aegis/internal/store"
+    "transaction-service/internal/model"
+    "transaction-service/internal/store"
 )
 
 type Repository struct {
