@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,7 +9,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./transaction-service/sql/create.sql:/docker-entrypoint-initdb.d/01_create.sql:ro
       - ./market/sql/create.sql:/docker-entrypoint-initdb.d/02_create_market.sql:ro
       - ./wallet/sql/create.sql:/docker-entrypoint-initdb.d/03_create_wallet.sql:ro
       - ./settlement/sql/create.sql:/docker-entrypoint-initdb.d/04_create_settlement.sql:ro
@@ -91,14 +88,9 @@ services:
       context: .
       dockerfile: market/Dockerfile
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: aegis_market
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      GRPC_PORT: 50051
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      PORT: 50051
     depends_on:
       postgres:
         condition: service_healthy

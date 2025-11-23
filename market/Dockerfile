@@ -1,19 +1,18 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/market
 
 # Install dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
+# Copy entire repo (for local replaces)
+COPY . /app
 
-# Copy source code
-COPY . .
+# Ensure dependencies and go.sum entries are complete
+RUN go mod tidy
 
 # Build the gRPC Market service
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o market-grpc ./market/cmd/grpc_main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o market-grpc ./cmd/main.go
 
 FROM alpine:latest
 
@@ -21,7 +20,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 
 # Copy the binary from builder
-COPY --from=builder /app/market-grpc .
+COPY --from=builder /app/market/market-grpc .
 
 # Expose ports
 EXPOSE 8081 50051

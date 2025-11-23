@@ -1,18 +1,16 @@
 package grpc
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "time"
 
-	market "github.com/aegis/proto/gen/market"
-	"github.com/aegis/shared/utils"
-	"github.com/ec332/aegis/market/internal/service"
-	"github.com/ec332/aegis/market/pkg/models"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    market "github.com/aegis/proto/gen/market"
+    "github.com/ec332/aegis/market/internal/service"
+    "github.com/ec332/aegis/market/pkg/models"
+    "go.uber.org/zap"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Server implements the MarketService gRPC server
@@ -32,13 +30,13 @@ func NewServer(service *service.Service, logger *zap.Logger) *Server {
 
 // GetMarket retrieves a market by ID
 func (s *Server) GetMarket(ctx context.Context, req *market.GetMarketRequest) (*market.GetMarketResponse, error) {
-	if req.MarketId == "" {
-		return nil, status.Error(codes.InvalidArgument, "market_id is required")
-	}
+    if req.Id == "" {
+        return nil, status.Error(codes.InvalidArgument, "id is required")
+    }
 
-	marketModel, err := s.service.GetMarket(ctx, req.MarketId)
+    marketModel, err := s.service.GetMarket(ctx, req.Id)
 	if err != nil {
-		s.logger.Error("failed to get market", zap.String("market_id", req.MarketId), zap.Error(err))
+        s.logger.Error("failed to get market", zap.String("id", req.Id), zap.Error(err))
 		return nil, status.Error(codes.Internal, "failed to get market")
 	}
 
@@ -53,24 +51,26 @@ func (s *Server) GetMarket(ctx context.Context, req *market.GetMarketRequest) (*
 
 // CreateMarket creates a new market
 func (s *Server) CreateMarket(ctx context.Context, req *market.CreateMarketRequest) (*market.CreateMarketResponse, error) {
-	// Validate request
-	if req.Title == "" {
-		return nil, status.Error(codes.InvalidArgument, "title is required")
-	}
-	if req.Description == "" {
-		return nil, status.Error(codes.InvalidArgument, "description is required")
-	}
-	if len(req.Options) < 2 {
-		return nil, status.Error(codes.InvalidArgument, "at least 2 options are required")
-	}
+    // Validate request
+    if req.Question == "" {
+        return nil, status.Error(codes.InvalidArgument, "question is required")
+    }
+    if req.Description == "" {
+        return nil, status.Error(codes.InvalidArgument, "description is required")
+    }
 
-	// Convert protobuf request to internal model
-	createReq := models.CreateMarketRequest{
-		Title:              req.Title,
-		Description:        req.Description,
-		Options:            req.Options,
-		ResolutionDatetime: req.ResolutionDatetime.AsTime(),
-	}
+    // Convert protobuf request to internal model
+    var endPtr *time.Time
+    if req.EndTime != nil {
+        t := req.EndTime.AsTime()
+        endPtr = &t
+    }
+    createReq := models.CreateMarketRequest{
+        Title:              req.Question,
+        Description:        req.Description,
+        Options:            []string{},
+        ResolutionDatetime: endPtr,
+    }
 
 	marketModel, err := s.service.CreateMarket(ctx, createReq)
 	if err != nil {
@@ -85,35 +85,30 @@ func (s *Server) CreateMarket(ctx context.Context, req *market.CreateMarketReque
 
 // UpdateMarket updates a market's details
 func (s *Server) UpdateMarket(ctx context.Context, req *market.UpdateMarketRequest) (*market.UpdateMarketResponse, error) {
-	if req.MarketId == "" {
-		return nil, status.Error(codes.InvalidArgument, "market_id is required")
-	}
+    if req.Id == "" {
+        return nil, status.Error(codes.InvalidArgument, "id is required")
+    }
 
 	// Convert protobuf request to internal model
 	updateReq := models.UpdateMarketRequest{}
 	
-	if req.Title != nil {
-		updateReq.Title = req.Title
-	}
-	if req.Description != nil {
-		updateReq.Description = req.Description
-	}
-	if req.Status != nil {
-		status := models.MarketStatus(*req.Status)
-		updateReq.Status = &status
-	}
-	if req.ResolutionDatetime != nil {
-		updateReq.ResolutionDatetime = req.ResolutionDatetime
-	}
-	if req.WinningOptionId != nil {
-		updateReq.WinningOptionID = req.WinningOptionId
-	}
+    if req.Status != "" {
+        statusVal := models.MarketStatus(req.Status)
+        updateReq.Status = &statusVal
+    }
+    if req.EndTime != nil {
+        t := req.EndTime.AsTime()
+        updateReq.ResolutionDatetime = &t
+    }
+    if req.Outcome != "" {
+        updateReq.WinningOptionID = &req.Outcome
+    }
 
-	marketModel, err := s.service.UpdateMarket(ctx, req.MarketId, updateReq)
+    marketModel, err := s.service.UpdateMarket(ctx, req.Id, updateReq)
 	if err != nil {
-		s.logger.Error("failed to update market", 
-			zap.String("market_id", req.MarketId), 
-			zap.Error(err))
+        s.logger.Error("failed to update market", 
+            zap.String("id", req.Id), 
+            zap.Error(err))
 		return nil, status.Error(codes.Internal, "failed to update market")
 	}
 
@@ -124,11 +119,11 @@ func (s *Server) UpdateMarket(ctx context.Context, req *market.UpdateMarketReque
 
 // ListMarkets retrieves markets
 func (s *Server) ListMarkets(ctx context.Context, req *market.ListMarketsRequest) (*market.ListMarketsResponse, error) {
-	var statusFilter *models.MarketStatus
-	if req.Status != nil {
-		status := models.MarketStatus(*req.Status)
-		statusFilter = &status
-	}
+    var statusFilter *models.MarketStatus
+    if req.Status != "" {
+        status := models.MarketStatus(req.Status)
+        statusFilter = &status
+    }
 
 	markets, err := s.service.ListMarkets(ctx, statusFilter)
 	if err != nil {
@@ -178,15 +173,15 @@ func (s *Server) GetMarketOptions(ctx context.Context, req *market.GetMarketOpti
 
 // GetUser retrieves a user by ID
 func (s *Server) GetUser(ctx context.Context, req *market.GetUserRequest) (*market.GetUserResponse, error) {
-	if req.UserId == "" {
-		return nil, status.Error(codes.InvalidArgument, "user_id is required")
-	}
+    if req.Id == "" {
+        return nil, status.Error(codes.InvalidArgument, "id is required")
+    }
 
-	user, err := s.service.GetUser(ctx, req.UserId)
+    user, err := s.service.GetUser(ctx, req.Id)
 	if err != nil {
 		s.logger.Error("failed to get user", 
-			zap.String("user_id", req.UserId), 
-			zap.Error(err))
+            zap.String("id", req.Id), 
+            zap.Error(err))
 		return nil, status.Error(codes.Internal, "failed to get user")
 	}
 
@@ -248,27 +243,29 @@ func (s *Server) CreateUser(ctx context.Context, req *market.CreateUserRequest) 
 
 // UpdateUser updates a user
 func (s *Server) UpdateUser(ctx context.Context, req *market.UpdateUserRequest) (*market.UpdateUserResponse, error) {
-	if req.UserId == "" {
-		return nil, status.Error(codes.InvalidArgument, "user_id is required")
-	}
+    if req.Id == "" {
+        return nil, status.Error(codes.InvalidArgument, "id is required")
+    }
 
 	updateReq := models.UpdateUserRequest{}
-	if req.Balance != nil {
-		updateReq.Balance = req.Balance
-	}
-	if req.Nonce != nil {
-		updateReq.Nonce = req.Nonce
-	}
-	if req.Role != nil {
-		role := models.UserRole(*req.Role)
-		updateReq.Role = &role
-	}
+    if req.WalletAddress != "" {
+        // Not persisted in UpdateUserRequest model; ignore
+    }
+    // Balance and Role are not optional in proto; apply when non-zero/non-empty
+    if req.Balance != 0 {
+        b := req.Balance
+        updateReq.Balance = &b
+    }
+    if req.Role != "" {
+        role := models.UserRole(req.Role)
+        updateReq.Role = &role
+    }
 
-	user, err := s.service.UpdateUser(ctx, req.UserId, updateReq)
+    user, err := s.service.UpdateUser(ctx, req.Id, updateReq)
 	if err != nil {
 		s.logger.Error("failed to update user", 
-			zap.String("user_id", req.UserId), 
-			zap.Error(err))
+            zap.String("id", req.Id), 
+            zap.Error(err))
 		return nil, status.Error(codes.Internal, "failed to update user")
 	}
 
@@ -280,55 +277,39 @@ func (s *Server) UpdateUser(ctx context.Context, req *market.UpdateUserRequest) 
 // Helper functions to convert between models and protobuf types
 
 func convertMarketToProto(marketModel *models.Market) *market.Market {
-	protoMarket := &market.Market{
-		Id:                 marketModel.ID,
-		Title:              marketModel.Title,
-		Description:        marketModel.Description,
-		Status:             string(marketModel.Status),
-		ResolutionDatetime: timestamppb.New(marketModel.ResolutionDatetime),
-		CreatedAt:          timestamppb.New(marketModel.CreatedAt),
-		UpdatedAt:          timestamppb.New(marketModel.UpdatedAt),
-	}
+    protoMarket := &market.Market{
+        Id:          marketModel.ID,
+        Question:    marketModel.Title,
+        Description: marketModel.Description,
+        Status:      string(marketModel.Status),
+        CreatedAt:   timestamppb.New(marketModel.CreatedAt),
+        UpdatedAt:   timestamppb.New(marketModel.UpdatedAt),
+    }
 
-	if marketModel.WinningOptionID != nil {
-		protoMarket.WinningOptionId = *marketModel.WinningOptionID
-	}
+    if marketModel.ResolutionDatetime != nil {
+        protoMarket.EndTime = timestamppb.New(*marketModel.ResolutionDatetime)
+    }
 
-	if marketModel.Options != nil {
-		protoMarket.Options = make([]*market.Option, len(marketModel.Options))
-		for i, option := range marketModel.Options {
-			protoMarket.Options[i] = convertOptionToProto(&option)
-		}
-	}
+    // Options are returned via GetMarketOptions
 
-	if marketModel.LiquidityPools != nil {
-		protoMarket.LiquidityPools = make([]*market.LiquidityPool, len(marketModel.LiquidityPools))
-		for i, pool := range marketModel.LiquidityPools {
-			protoMarket.LiquidityPools[i] = convertLiquidityPoolToProto(&pool)
-		}
-	}
+    // Liquidity pools are not part of current proto
 
 	return protoMarket
 }
 
 func convertOptionToProto(optionModel *models.Option) *market.Option {
-	return &market.Option{
-		Id:        optionModel.ID,
-		MarketId:  optionModel.MarketID,
-		Title:     optionModel.Title,
-		CreatedAt: timestamppb.New(optionModel.CreatedAt),
-	}
+    return &market.Option{
+        Id:           optionModel.ID,
+        MarketId:     optionModel.MarketID,
+        OptionText:   optionModel.Title,
+        CurrentPrice: 0,
+        Volume:       0,
+        CreatedAt:    timestamppb.New(optionModel.CreatedAt),
+        UpdatedAt:    timestamppb.New(optionModel.CreatedAt),
+    }
 }
 
-func convertLiquidityPoolToProto(poolModel *models.LiquidityPool) *market.LiquidityPool {
-	return &market.LiquidityPool{
-		Id:        poolModel.ID,
-		MarketId:  poolModel.MarketID,
-		OptionId:  poolModel.OptionID,
-		PoolValue: poolModel.PoolValue,
-		UpdatedAt: timestamppb.New(poolModel.UpdatedAt),
-	}
-}
+// Liquidity pool conversion removed; not defined in current proto
 
 func convertUserToProto(userModel *models.User) *market.User {
 	return &market.User{

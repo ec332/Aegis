@@ -1,19 +1,18 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/api-gateway
 
 # Install dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
+# Copy entire repo (needed for local replace to ../)
+COPY . /app
 
-# Copy source code
-COPY . .
+# Ensure dependencies and go.sum entries are complete
+RUN go mod tidy
 
 # Build the API Gateway
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api-gateway ./api-gateway/cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api-gateway ./cmd/main.go
 
 FROM alpine:latest
 

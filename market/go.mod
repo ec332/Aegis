@@ -1,24 +1,24 @@
 module github.com/ec332/aegis/market
 
-go 1.21
+go 1.22
 
 replace (
-	github.com/aegis/proto/gen/market => ../proto/gen/market
-	github.com/aegis/shared => ../shared
+    github.com/aegis/proto => ../proto
+    github.com/aegis/shared => ../shared
 )
 
 require (
-	github.com/aegis/proto/gen/market v0.0.0
-	github.com/aegis/shared v0.0.0
-	github.com/go-chi/chi/v5 v5.2.3
-	github.com/go-chi/cors v1.2.1
-	github.com/google/uuid v1.6.0
-	github.com/joho/godotenv v1.5.1
-	github.com/lib/pq v1.10.9
-	github.com/redis/go-redis/v9 v9.16.0
-	go.uber.org/zap v1.24.0
-	google.golang.org/grpc v1.56.3
-	google.golang.org/protobuf v1.31.0
+    github.com/aegis/proto v0.0.0
+    github.com/aegis/shared v0.0.0
+    github.com/go-chi/chi/v5 v5.2.3
+    github.com/go-chi/cors v1.2.1
+    github.com/google/uuid v1.6.0
+    github.com/joho/godotenv v1.5.1
+    github.com/lib/pq v1.10.9
+    github.com/redis/go-redis/v9 v9.16.0
+    go.uber.org/zap v1.24.0
+    google.golang.org/grpc v1.65.0
+    google.golang.org/protobuf v1.33.0
 )
 
 require (

@@ -3,15 +3,19 @@ module api-gateway
 go 1.22
 
 require (
-	github.com/go-chi/chi/v5 v5.0.12
-	github.com/go-chi/cors v1.2.1
-	go.uber.org/zap v1.26.0
-	google.golang.org/grpc v1.59.0
-	google.golang.org/protobuf v1.31.0
-	aegis v0.0.0
+    github.com/go-chi/chi/v5 v5.0.12
+    github.com/go-chi/cors v1.2.1
+    go.uber.org/zap v1.26.0
+    google.golang.org/grpc v1.65.0
+    google.golang.org/protobuf v1.33.0
+    github.com/aegis/proto v0.0.0
+    github.com/aegis/shared v0.0.0
+    aegis v0.0.0
 )
 
 replace aegis => ../
+replace github.com/aegis/proto => ../proto
+replace github.com/aegis/shared => ../shared
 
 require (
 	github.com/golang/protobuf v1.5.3 // indirect

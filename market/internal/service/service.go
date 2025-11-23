@@ -36,23 +36,17 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
 	now := time.Now()
 	marketID := uuid.New().String()
 
-	// Create market
-	liquidityParam := req.LiquidityParameter
-	if liquidityParam <= 0 {
-		liquidityParam = 100.0 // Default value
-	}
-
-	market := &models.Market{
-		ID:                 marketID,
-		Title:              req.Title,
-		Description:        req.Description,
-		Status:             models.MarketStatusDraft,
-		ResolutionDatetime: req.ResolutionDatetime,
-		WinningOptionID:    nil,
-		LiquidityParameter: liquidityParam,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}
+    // Create market
+    market := &models.Market{
+        ID:                 marketID,
+        Title:              req.Title,
+        Description:        req.Description,
+        Status:             models.MarketStatusDraft,
+        ResolutionDatetime: req.ResolutionDatetime,
+        WinningOptionID:    nil,
+        CreatedAt:          now,
+        UpdatedAt:          now,
+    }
 
 	// Create options
 	options := make([]models.Option, len(req.Options))
@@ -68,14 +62,14 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
 	// Create liquidity pools (one per option, initial value 0)
 	pools := make([]models.LiquidityPool, len(options))
 	for i, option := range options {
-		pools[i] = models.LiquidityPool{
-			ID:            uuid.New().String(),
-			MarketID:      marketID,
-			OptionID:      option.ID,
-			ShareQuantity: 0,
-			UpdatedAt:     now,
-		}
-	}
+        pools[i] = models.LiquidityPool{
+            ID:        uuid.New().String(),
+            MarketID:  marketID,
+            OptionID:  option.ID,
+            PoolValue: 0,
+            UpdatedAt: now,
+        }
+    }
 
 	// Save to database
 	if err := s.repo.CreateMarket(ctx, market, options, pools); err != nil {
@@ -226,9 +220,9 @@ func (s *Service) GetMarketPrices(ctx context.Context, marketID string) (map[str
 	// We need to map option IDs to indices or just iterate.
 	// Let's map option ID to quantity.
 	quantityMap := make(map[string]float64)
-	for _, pool := range market.LiquidityPools {
-		quantityMap[pool.OptionID] = pool.ShareQuantity
-	}
+    for _, pool := range market.LiquidityPools {
+        quantityMap[pool.OptionID] = pool.PoolValue
+    }
 
 	// Create a slice of quantities corresponding to the market options order
 	// Assuming market.Options is populated and ordered
@@ -237,14 +231,15 @@ func (s *Service) GetMarketPrices(ctx context.Context, marketID string) (map[str
 	}
 
 	orderedQuantities := make([]float64, len(market.Options))
-	for i, option := range market.Options {
-		orderedQuantities[i] = quantityMap[option.ID]
-	}
+    for i, option := range market.Options {
+        orderedQuantities[i] = quantityMap[option.ID]
+    }
 
-	prices := make(map[string]float64)
-	for i, option := range market.Options {
-		prices[option.ID] = calculatePrice(orderedQuantities, market.LiquidityParameter, i)
-	}
+    const b = 100.0
+    prices := make(map[string]float64)
+    for i, option := range market.Options {
+        prices[option.ID] = calculatePrice(orderedQuantities, b, i)
+    }
 
 	return prices, nil
 }
@@ -257,24 +252,25 @@ func (s *Service) CalculateBuyCost(ctx context.Context, marketID, optionID strin
 	}
 
 	quantityMap := make(map[string]float64)
-	for _, pool := range market.LiquidityPools {
-		quantityMap[pool.OptionID] = pool.ShareQuantity
-	}
+    for _, pool := range market.LiquidityPools {
+        quantityMap[pool.OptionID] = pool.PoolValue
+    }
 
 	orderedQuantities := make([]float64, len(market.Options))
 	optionIndex := -1
-	for i, option := range market.Options {
-		orderedQuantities[i] = quantityMap[option.ID]
-		if option.ID == optionID {
-			optionIndex = i
-		}
-	}
+    for i, option := range market.Options {
+        orderedQuantities[i] = quantityMap[option.ID]
+        if option.ID == optionID {
+            optionIndex = i
+        }
+    }
 
 	if optionIndex == -1 {
 		return 0, fmt.Errorf("option not found in market")
 	}
 
-	return calculateCostToBuy(orderedQuantities, market.LiquidityParameter, optionIndex, amount), nil
+    const bBuy = 100.0
+    return calculateCostToBuy(orderedQuantities, bBuy, optionIndex, amount), nil
 }
 
 // CalculateSellCost calculates the return from selling a specific amount of shares for an option
@@ -285,39 +281,37 @@ func (s *Service) CalculateSellCost(ctx context.Context, marketID, optionID stri
 	}
 
 	quantityMap := make(map[string]float64)
-	for _, pool := range market.LiquidityPools {
-		quantityMap[pool.OptionID] = pool.ShareQuantity
-	}
+    for _, pool := range market.LiquidityPools {
+        quantityMap[pool.OptionID] = pool.PoolValue
+    }
 
 	orderedQuantities := make([]float64, len(market.Options))
 	optionIndex := -1
-	for i, option := range market.Options {
-		orderedQuantities[i] = quantityMap[option.ID]
-		if option.ID == optionID {
-			optionIndex = i
-		}
-	}
+    for i, option := range market.Options {
+        orderedQuantities[i] = quantityMap[option.ID]
+        if option.ID == optionID {
+            optionIndex = i
+        }
+    }
 
 	if optionIndex == -1 {
 		return 0, fmt.Errorf("option not found in market")
 	}
 
-	return calculateCostToSell(orderedQuantities, market.LiquidityParameter, optionIndex, amount), nil
+    const bSell = 100.0
+    return calculateCostToSell(orderedQuantities, bSell, optionIndex, amount), nil
 }
 
 // Helper functions
 
 func (s *Service) validateCreateMarketRequest(req models.CreateMarketRequest) error {
-	if req.Title == "" {
-		return fmt.Errorf("title is required")
-	}
-	if req.Description == "" {
-		return fmt.Errorf("description is required")
-	}
-	if len(req.Options) < 2 {
-		return fmt.Errorf("at least 2 options are required")
-	}
-	return nil
+    if req.Title == "" {
+        return fmt.Errorf("title is required")
+    }
+    if req.Description == "" {
+        return fmt.Errorf("description is required")
+    }
+    return nil
 }
 
 func (s *Service) validateStatusTransition(from, to models.MarketStatus) error {

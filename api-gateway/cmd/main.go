@@ -11,9 +11,9 @@ import (
     "github.com/gorilla/mux"
     "go.uber.org/zap"
 
-    resgrpc "aegis/shared/grpc"
-    "aegis/shared/kafka"
-    "aegis/shared/metrics"
+    resgrpc "github.com/aegis/shared/grpc"
+    "github.com/aegis/shared/kafka"
+    "github.com/aegis/shared/metrics"
     market "github.com/aegis/proto/gen/market"
     wallet "github.com/aegis/proto/gen/wallet"
     settlement "github.com/aegis/proto/gen/settlement"
@@ -26,6 +26,9 @@ type APIGateway struct {
     walletClient    *resgrpc.ResilientClient
     settlementClient *resgrpc.ResilientClient
     kafkaProducer   *kafka.Producer
+    marketStub      market.MarketServiceClient
+    walletStub      wallet.WalletServiceClient
+    settlementStub  settlement.SettlementServiceClient
 }
 
 func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIGateway, error) {
@@ -57,6 +60,9 @@ func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIG
         walletClient:     walletClient,
         settlementClient: settlementClient,
         kafkaProducer:    kafkaProducer,
+        marketStub:       market.NewMarketServiceClient(marketClient.GetConnection()),
+        walletStub:       wallet.NewWalletServiceClient(walletClient.GetConnection()),
+        settlementStub:   settlement.NewSettlementServiceClient(settlementClient.GetConnection()),
     }, nil
 }
 
@@ -84,8 +90,7 @@ func (g *APIGateway) handleMarketRequest(w http.ResponseWriter, r *http.Request)
 func (g *APIGateway) listMarkets(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	req := &market.ListMarketsRequest{}
 	
-    var resp *market.ListMarketsResponse
-    err := g.marketClient.Invoke(ctx, "/market.MarketService/ListMarkets", req, &resp)
+    resp, err := g.marketStub.ListMarkets(ctx, req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "ListMarkets")
@@ -102,10 +107,9 @@ func (g *APIGateway) getMarket(ctx context.Context, w http.ResponseWriter, r *ht
 		return
 	}
 
-	req := &market.GetMarketRequest{MarketId: marketID}
+    req := &market.GetMarketRequest{Id: marketID}
 	
-    var resp *market.GetMarketResponse
-    err := g.marketClient.Invoke(ctx, "/market.MarketService/GetMarket", req, &resp)
+    resp, err := g.marketStub.GetMarket(ctx, req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "GetMarket")
@@ -122,8 +126,7 @@ func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r 
 		return
 	}
 
-    var resp *market.CreateMarketResponse
-    err := g.marketClient.Invoke(ctx, "/market.MarketService/CreateMarket", &req, &resp)
+    resp, err := g.marketStub.CreateMarket(ctx, &req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "CreateMarket")
@@ -140,15 +143,14 @@ func (g *APIGateway) updateMarket(ctx context.Context, w http.ResponseWriter, r 
 		return
 	}
 
-	var req market.UpdateMarketRequest
+    var req market.UpdateMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	req.MarketId = marketID
+    req.Id = marketID
 
-    var resp *market.UpdateMarketResponse
-    err := g.marketClient.Invoke(ctx, "/market.MarketService/UpdateMarket", &req, &resp)
+    resp, err := g.marketStub.UpdateMarket(ctx, &req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "UpdateMarket")
@@ -167,8 +169,7 @@ func (g *APIGateway) getMarketOptions(ctx context.Context, w http.ResponseWriter
 
 	req := &market.GetMarketOptionsRequest{MarketId: marketID}
 	
-    var resp *market.GetMarketOptionsResponse
-    err := g.marketClient.Invoke(ctx, "/market.MarketService/GetMarketOptions", req, &resp)
+    resp, err := g.marketStub.GetMarketOptions(ctx, req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "GetMarketOptions")
@@ -204,8 +205,7 @@ func (g *APIGateway) createWallet(ctx context.Context, w http.ResponseWriter, r 
 		return
 	}
 
-    var resp *wallet.CreateWalletAccountResponse
-    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/CreateWalletAccount", &req, &resp)
+    resp, err := g.walletStub.CreateWalletAccount(ctx, &req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "CreateWalletAccount")
@@ -222,10 +222,9 @@ func (g *APIGateway) getWallet(ctx context.Context, w http.ResponseWriter, r *ht
 		return
 	}
 
-	req := &wallet.GetWalletAccountRequest{WalletId: walletID}
+    req := &wallet.GetWalletAccountRequest{Id: walletID}
 	
-    var resp *wallet.GetWalletAccountResponse
-    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/GetWalletAccount", req, &resp)
+    resp, err := g.walletStub.GetWalletAccount(ctx, req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "GetWalletAccount")
@@ -247,10 +246,9 @@ func (g *APIGateway) deposit(ctx context.Context, w http.ResponseWriter, r *http
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	req.WalletId = walletID
+    req.AccountId = walletID
 
-    var resp *wallet.DepositResponse
-    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/Deposit", &req, &resp)
+    resp, err := g.walletStub.Deposit(ctx, &req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "Deposit")
@@ -272,10 +270,9 @@ func (g *APIGateway) withdraw(ctx context.Context, w http.ResponseWriter, r *htt
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	req.WalletId = walletID
+    req.AccountId = walletID
 
-    var resp *wallet.WithdrawalResponse
-    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/Withdrawal", &req, &resp)
+    resp, err := g.walletStub.Withdrawal(ctx, &req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "Withdrawal")
@@ -309,8 +306,7 @@ func (g *APIGateway) createSettlement(ctx context.Context, w http.ResponseWriter
 		return
 	}
 
-    var resp *settlement.CreateSettlementResponse
-    err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/CreateSettlement", &req, &resp)
+    resp, err := g.settlementStub.CreateSettlement(ctx, &req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "settlement", "CreateSettlement")
@@ -327,10 +323,9 @@ func (g *APIGateway) getSettlement(ctx context.Context, w http.ResponseWriter, r
 		return
 	}
 
-	req := &settlement.GetSettlementRequest{SettlementId: settlementID}
+    req := &settlement.GetSettlementRequest{Id: settlementID}
 	
-    var resp *settlement.GetSettlementResponse
-    err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/GetSettlement", req, &resp)
+    resp, err := g.settlementStub.GetSettlement(ctx, req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "settlement", "GetSettlement")
@@ -352,10 +347,9 @@ func (g *APIGateway) completeSettlement(ctx context.Context, w http.ResponseWrit
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	req.SettlementId = settlementID
+    req.Id = settlementID
 
-    var resp *settlement.CompleteSettlementResponse
-    err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/CompleteSettlement", &req, &resp)
+    resp, err := g.settlementStub.CompleteSettlement(ctx, &req)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "settlement", "CompleteSettlement")

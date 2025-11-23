@@ -351,3 +351,32 @@ For support and questions:
 ---
 
 **Aegis Prediction Market Platform** - Empowering decentralized prediction markets with robust microservices architecture.
+## Proto Generation
+
+- Pinned plugins: `protoc-gen-go v1.33.0`, `protoc-gen-go-grpc v1.3.0`
+- Dockerized one-liner:
+  - `make protos`
+- Local (requires `protoc` and plugins installed):
+  - `make protos-local`
+
+Generated files are written to `proto/gen` with source-relative paths.
+
+### Local setup (if not using Docker)
+
+- Install prerequisites:
+  - `brew install go protobuf`
+  - `go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.33.0`
+  - `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0`
+  - Ensure `~/go/bin` is on your `PATH`
+- Generate:
+  - `make protos-local`
+
+### Notes
+
+- Keep the generator versions pinned to avoid runtime incompatibilities
+- Commit changes under `proto/gen` when proto definitions change
+
+## Docker Compose
+
+- The Compose `version:` field is obsolete and has been removed to silence warnings
+- Use `docker compose up -d` and `docker compose build` as usual

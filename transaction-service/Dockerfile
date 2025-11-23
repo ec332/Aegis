@@ -1,12 +1,12 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
+WORKDIR /app/transaction-service
+COPY transaction-service/go.mod transaction-service/go.sum ./
+RUN go mod tidy
 
-COPY . .
-RUN go build -o transaction-service cmd/transaction-service/main.go
+COPY . /app
+RUN go build -o transaction-service ./cmd/transaction-service/main.go
 
 # Runtime stage
 FROM alpine:latest
