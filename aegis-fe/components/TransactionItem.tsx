@@ -6,16 +6,16 @@ interface TransactionItemProps {
   transaction: Transaction;
   market: Market;
   option: Option;
-  onEdit: (transaction: Transaction) => void;
-  onDelete: (transactionId: string) => void;
+  // onEdit: (transaction: Transaction) => void;
+  // onDelete: (transactionId: string) => void;
 }
 
 export default function TransactionItem({
   transaction,
   market,
   option,
-  onEdit,
-  onDelete,
+  // onEdit,
+  // onDelete,
 }: TransactionItemProps) {
   const date = new Date(transaction.created_at).toLocaleDateString("en-US", {
     year: "numeric",
@@ -74,7 +74,7 @@ export default function TransactionItem({
         </div>
 
         {/* Right: Action Buttons */}
-        <div className="flex gap-3 lg:flex-col lg:w-auto">
+        {/* <div className="flex gap-3 lg:flex-col lg:w-auto">
           <button
             onClick={() => onEdit(transaction)}
             className="flex-1 lg:flex-initial px-4 py-2 bg-[#151b4d] text-white rounded-md hover:bg-[#1a2159] transition-colors font-medium text-sm"
@@ -87,7 +87,7 @@ export default function TransactionItem({
           >
             Delete
           </button>
-        </div>
+        </div> */}
       </div>
     </div>
   );
