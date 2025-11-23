@@ -1,191 +1,111 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"net"
+    "context"
+    "fmt"
+    "net"
+    "time"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
+    "go.uber.org/zap"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/health"
+    "google.golang.org/grpc/health/grpc_health_v1"
+    "google.golang.org/grpc/reflection"
 
-	"aegis/shared/grpc"
-	"aegis/shared/metrics"
-	"aegis/settlement/internal/service"
-	"aegis/settlement/internal/repository"
-	"aegis/proto/settlement"
+    grpcserver "aegis/shared/grpc"
+    "aegis/shared/metrics"
+    settlement "github.com/aegis/proto/gen/settlement"
 )
 
 type SettlementGRPCServer struct {
-	settlement.UnimplementedSettlementServiceServer
-	service *service.SettlementService
-	logger  *zap.Logger
+    settlement.UnimplementedSettlementServiceServer
+    settlements     map[string]*settlement.Settlement
+    distributions   map[string][]*settlement.SettlementDistribution
+    logger          *zap.Logger
 }
 
-func NewSettlementGRPCServer(settlementService *service.SettlementService, logger *zap.Logger) *SettlementGRPCServer {
-	return &SettlementGRPCServer{
-		service: settlementService,
-		logger:  logger,
-	}
+func NewSettlementGRPCServer(logger *zap.Logger) *SettlementGRPCServer {
+    return &SettlementGRPCServer{
+        settlements:   make(map[string]*settlement.Settlement),
+        distributions: make(map[string][]*settlement.SettlementDistribution),
+        logger:        logger,
+    }
 }
 
 func (s *SettlementGRPCServer) CreateSettlement(ctx context.Context, req *settlement.CreateSettlementRequest) (*settlement.CreateSettlementResponse, error) {
-	s.logger.Info("Creating settlement",
-		zap.String("market_id", req.MarketId),
-		zap.String("winning_option_id", req.WinningOptionId),
-	)
-
-	settlement, err := s.service.CreateSettlement(ctx, req.MarketId, req.WinningOptionId)
-	if err != nil {
-		s.logger.Error("Failed to create settlement", zap.Error(err))
-		return nil, fmt.Errorf("failed to create settlement: %w", err)
-	}
-
-	return &settlement.CreateSettlementResponse{
-		Settlement: &settlement.Settlement{
-			Id:              settlement.ID,
-			MarketId:        settlement.MarketID,
-			WinningOptionId: settlement.WinningOptionID,
-			Status:          settlement.Status,
-			CreatedAt:       settlement.CreatedAt.Unix(),
-			UpdatedAt:       settlement.UpdatedAt.Unix(),
-		},
-	}, nil
+    id := fmt.Sprintf("s-%d", time.Now().UnixNano())
+    st := &settlement.Settlement{
+        Id:              id,
+        MarketId:        req.MarketId,
+        WinningOptionId: req.WinningOptionId,
+        Status:          "pending",
+        CreatedAt:       time.Now().Unix(),
+        UpdatedAt:       time.Now().Unix(),
+    }
+    s.settlements[id] = st
+    return &settlement.CreateSettlementResponse{Settlement: st}, nil
 }
 
 func (s *SettlementGRPCServer) GetSettlement(ctx context.Context, req *settlement.GetSettlementRequest) (*settlement.GetSettlementResponse, error) {
-	s.logger.Info("Getting settlement", zap.String("settlement_id", req.SettlementId))
-
-	settlement, err := s.service.GetSettlement(ctx, req.SettlementId)
-	if err != nil {
-		s.logger.Error("Failed to get settlement", zap.Error(err))
-		return nil, fmt.Errorf("failed to get settlement: %w", err)
-	}
-
-	return &settlement.GetSettlementResponse{
-		Settlement: &settlement.Settlement{
-			Id:              settlement.ID,
-			MarketId:        settlement.MarketID,
-			WinningOptionId: settlement.WinningOptionID,
-			Status:          settlement.Status,
-			CreatedAt:       settlement.CreatedAt.Unix(),
-			UpdatedAt:       settlement.UpdatedAt.Unix(),
-		},
-	}, nil
+    st, ok := s.settlements[req.SettlementId]
+    if !ok {
+        return nil, fmt.Errorf("not found")
+    }
+    return &settlement.GetSettlementResponse{Settlement: st}, nil
 }
 
 func (s *SettlementGRPCServer) CompleteSettlement(ctx context.Context, req *settlement.CompleteSettlementRequest) (*settlement.CompleteSettlementResponse, error) {
-	s.logger.Info("Completing settlement", zap.String("settlement_id", req.SettlementId))
-
-	settlement, err := s.service.CompleteSettlement(ctx, req.SettlementId)
-	if err != nil {
-		s.logger.Error("Failed to complete settlement", zap.Error(err))
-		return nil, fmt.Errorf("failed to complete settlement: %w", err)
-	}
-
-	return &settlement.CompleteSettlementResponse{
-		Settlement: &settlement.Settlement{
-			Id:              settlement.ID,
-			MarketId:        settlement.MarketID,
-			WinningOptionId: settlement.WinningOptionID,
-			Status:          settlement.Status,
-			CreatedAt:       settlement.CreatedAt.Unix(),
-			UpdatedAt:       settlement.UpdatedAt.Unix(),
-		},
-	}, nil
+    st, ok := s.settlements[req.SettlementId]
+    if !ok {
+        return nil, fmt.Errorf("not found")
+    }
+    st.Status = "completed"
+    st.UpdatedAt = time.Now().Unix()
+    return &settlement.CompleteSettlementResponse{Settlement: st}, nil
 }
 
 func (s *SettlementGRPCServer) ProcessPayout(ctx context.Context, req *settlement.ProcessPayoutRequest) (*settlement.ProcessPayoutResponse, error) {
-	s.logger.Info("Processing payout",
-		zap.String("settlement_id", req.SettlementId),
-		zap.String("user_id", req.UserId),
-		zap.Float64("amount", req.Amount),
-	)
-
-	distribution, err := s.service.ProcessPayout(ctx, req.SettlementId, req.UserId, req.Amount)
-	if err != nil {
-		s.logger.Error("Failed to process payout", zap.Error(err))
-		return nil, fmt.Errorf("failed to process payout: %w", err)
-	}
-
-	return &settlement.ProcessPayoutResponse{
-		Distribution: &settlement.SettlementDistribution{
-			Id:           distribution.ID,
-			SettlementId: distribution.SettlementID,
-			UserId:       distribution.UserID,
-			Amount:       distribution.Amount,
-			Status:       distribution.Status,
-			ProcessedAt:  distribution.ProcessedAt.Unix(),
-		},
-	}, nil
+    st, ok := s.settlements[req.SettlementId]
+    if !ok {
+        return nil, fmt.Errorf("not found")
+    }
+    d := &settlement.SettlementDistribution{
+        Id:           fmt.Sprintf("d-%d", time.Now().UnixNano()),
+        SettlementId: st.Id,
+        UserId:       req.UserId,
+        Amount:       req.Amount,
+        Status:       "processed",
+        ProcessedAt:  time.Now().Unix(),
+    }
+    s.distributions[st.Id] = append(s.distributions[st.Id], d)
+    return &settlement.ProcessPayoutResponse{Distribution: d}, nil
 }
 
 func (s *SettlementGRPCServer) GetSettlementDistributions(ctx context.Context, req *settlement.GetSettlementDistributionsRequest) (*settlement.GetSettlementDistributionsResponse, error) {
-	s.logger.Info("Getting settlement distributions", zap.String("settlement_id", req.SettlementId))
-
-	distributions, err := s.service.GetSettlementDistributions(ctx, req.SettlementId)
-	if err != nil {
-		s.logger.Error("Failed to get settlement distributions", zap.Error(err))
-		return nil, fmt.Errorf("failed to get settlement distributions: %w", err)
-	}
-
-	protoDistributions := make([]*settlement.SettlementDistribution, len(distributions))
-	for i, dist := range distributions {
-		protoDistributions[i] = &settlement.SettlementDistribution{
-			Id:           dist.ID,
-			SettlementId: dist.SettlementID,
-			UserId:       dist.UserID,
-			Amount:       dist.Amount,
-			Status:       dist.Status,
-			ProcessedAt:  dist.ProcessedAt.Unix(),
-		}
-	}
-
-	return &settlement.GetSettlementDistributionsResponse{
-		Distributions: protoDistributions,
-	}, nil
+    list := s.distributions[req.SettlementId]
+    return &settlement.GetSettlementDistributionsResponse{Distributions: list}, nil
 }
 
 func main() {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+    logger, _ := zap.NewProduction()
+    defer logger.Sync()
 
-	// Initialize dependencies
-	metricsCollector := metrics.NewCollector()
-	
-	// Create repository (you'll need to implement this based on your existing settlement service)
-	repo := repository.NewInMemorySettlementRepository()
-	
-	// Create service
-	settlementService := service.NewSettlementService(repo, logger)
-	
-	// Create gRPC server
-	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(grpc.UnaryServerInterceptor(metricsCollector, logger)),
-	)
-	
-	// Register Settlement service
-	settlementServer := NewSettlementGRPCServer(settlementService, logger)
-	settlement.RegisterSettlementServiceServer(grpcServer, settlementServer)
-	
-	// Register health check service
-	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus("settlement.SettlementService", grpc_health_v1.HealthCheckResponse_SERVING)
-	
-	// Register reflection service for debugging
-	reflection.Register(grpcServer)
-
-	// Start listening
-	lis, err := net.Listen("tcp", ":50053")
-	if err != nil {
-		logger.Fatal("Failed to listen", zap.Error(err))
-	}
-
-	logger.Info("Starting Settlement gRPC server on :50053")
-	if err := grpcServer.Serve(lis); err != nil {
-		logger.Fatal("Failed to serve", zap.Error(err))
-	}
+    metricsRegistry := metrics.NewRegistry(logger)
+    grpcServer := grpc.NewServer(
+        grpc.UnaryInterceptor(grpcserver.UnaryServerInterceptor(logger, grpcserver.NewServerMetrics("settlement", metricsRegistry))),
+    )
+    settlementServer := NewSettlementGRPCServer(logger)
+    settlement.RegisterSettlementServiceServer(grpcServer, settlementServer)
+    healthServer := health.NewServer()
+    grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+    healthServer.SetServingStatus("settlement.SettlementService", grpc_health_v1.HealthCheckResponse_SERVING)
+    reflection.Register(grpcServer)
+    lis, err := net.Listen("tcp", ":50053")
+    if err != nil {
+        logger.Fatal("Failed to listen", zap.Error(err))
+    }
+    logger.Info("Starting Settlement gRPC server on :50053")
+    if err := grpcServer.Serve(lis); err != nil {
+        logger.Fatal("Failed to serve", zap.Error(err))
+    }
 }

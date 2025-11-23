@@ -1,67 +1,63 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"strings"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "strings"
+    "time"
 
-	"github.com/gorilla/mux"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health/grpc_health_v1"
+    "github.com/gorilla/mux"
+    "go.uber.org/zap"
 
-	"aegis/shared/grpc"
-	"aegis/shared/kafka"
-	"aegis/shared/metrics"
-	"aegis/proto/market"
-	"aegis/proto/wallet"
-	"aegis/proto/settlement"
+    resgrpc "aegis/shared/grpc"
+    "aegis/shared/kafka"
+    "aegis/shared/metrics"
+    market "github.com/aegis/proto/gen/market"
+    wallet "github.com/aegis/proto/gen/wallet"
+    settlement "github.com/aegis/proto/gen/settlement"
 )
 
 type APIGateway struct {
-	logger          *zap.Logger
-	metrics         *metrics.Collector
-	marketClient    *grpc.ResilientClient
-	walletClient    *grpc.ResilientClient
-	settlementClient *grpc.ResilientClient
-	kafkaProducer   *kafka.Producer
+    logger          *zap.Logger
+    metrics         *metrics.Registry
+    marketClient    *resgrpc.ResilientClient
+    walletClient    *resgrpc.ResilientClient
+    settlementClient *resgrpc.ResilientClient
+    kafkaProducer   *kafka.Producer
 }
 
-func NewAPIGateway(logger *zap.Logger, metricsCollector *metrics.Collector) (*APIGateway, error) {
-	// Create resilient gRPC clients with circuit breaker and retry
-	marketClient, err := grpc.NewResilientClient("market-service:50051", logger, metricsCollector)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create market client: %w", err)
-	}
+func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIGateway, error) {
+    marketConfig := resgrpc.DefaultClientConfig("market", "market-service:50051")
+    walletConfig := resgrpc.DefaultClientConfig("wallet", "wallet-service:50052")
+    settlementConfig := resgrpc.DefaultClientConfig("settlement", "settlement-service:50053")
 
-	walletClient, err := grpc.NewResilientClient("wallet-service:50052", logger, metricsCollector)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create wallet client: %w", err)
-	}
+    marketClient, err := resgrpc.NewResilientClient(marketConfig, logger, metricsRegistry)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create market client: %w", err)
+    }
 
-	settlementClient, err := grpc.NewResilientClient("settlement-service:50053", logger, metricsCollector)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create settlement client: %w", err)
-	}
+    walletClient, err := resgrpc.NewResilientClient(walletConfig, logger, metricsRegistry)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create wallet client: %w", err)
+    }
 
-	kafkaProducer, err := kafka.NewProducer([]string{"kafka:9092"}, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka producer: %w", err)
-	}
+    settlementClient, err := resgrpc.NewResilientClient(settlementConfig, logger, metricsRegistry)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create settlement client: %w", err)
+    }
 
-	return &APIGateway{
-		logger:           logger,
-		metrics:          metricsCollector,
-		marketClient:     marketClient,
-		walletClient:     walletClient,
-		settlementClient: settlementClient,
-		kafkaProducer:    kafkaProducer,
-	}, nil
+    kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: []string{"kafka:9092"}}, logger)
+
+    return &APIGateway{
+        logger:           logger,
+        metrics:          metricsRegistry,
+        marketClient:     marketClient,
+        walletClient:     walletClient,
+        settlementClient: settlementClient,
+        kafkaProducer:    kafkaProducer,
+    }, nil
 }
 
 func (g *APIGateway) handleMarketRequest(w http.ResponseWriter, r *http.Request) {
@@ -88,8 +84,8 @@ func (g *APIGateway) handleMarketRequest(w http.ResponseWriter, r *http.Request)
 func (g *APIGateway) listMarkets(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	req := &market.ListMarketsRequest{}
 	
-	var resp *market.ListMarketsResponse
-	err := g.marketClient.Invoke(ctx, "/market.MarketService/ListMarkets", req, &resp)
+    var resp *market.ListMarketsResponse
+    err := g.marketClient.Invoke(ctx, "/market.MarketService/ListMarkets", req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "ListMarkets")
@@ -108,8 +104,8 @@ func (g *APIGateway) getMarket(ctx context.Context, w http.ResponseWriter, r *ht
 
 	req := &market.GetMarketRequest{MarketId: marketID}
 	
-	var resp *market.GetMarketResponse
-	err := g.marketClient.Invoke(ctx, "/market.MarketService/GetMarket", req, &resp)
+    var resp *market.GetMarketResponse
+    err := g.marketClient.Invoke(ctx, "/market.MarketService/GetMarket", req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "GetMarket")
@@ -126,8 +122,8 @@ func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r 
 		return
 	}
 
-	var resp *market.CreateMarketResponse
-	err := g.marketClient.Invoke(ctx, "/market.MarketService/CreateMarket", &req, &resp)
+    var resp *market.CreateMarketResponse
+    err := g.marketClient.Invoke(ctx, "/market.MarketService/CreateMarket", &req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "CreateMarket")
@@ -151,8 +147,8 @@ func (g *APIGateway) updateMarket(ctx context.Context, w http.ResponseWriter, r 
 	}
 	req.MarketId = marketID
 
-	var resp *market.UpdateMarketResponse
-	err := g.marketClient.Invoke(ctx, "/market.MarketService/UpdateMarket", &req, &resp)
+    var resp *market.UpdateMarketResponse
+    err := g.marketClient.Invoke(ctx, "/market.MarketService/UpdateMarket", &req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "UpdateMarket")
@@ -171,8 +167,8 @@ func (g *APIGateway) getMarketOptions(ctx context.Context, w http.ResponseWriter
 
 	req := &market.GetMarketOptionsRequest{MarketId: marketID}
 	
-	var resp *market.GetMarketOptionsResponse
-	err := g.marketClient.Invoke(ctx, "/market.MarketService/GetMarketOptions", req, &resp)
+    var resp *market.GetMarketOptionsResponse
+    err := g.marketClient.Invoke(ctx, "/market.MarketService/GetMarketOptions", req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "market", "GetMarketOptions")
@@ -208,8 +204,8 @@ func (g *APIGateway) createWallet(ctx context.Context, w http.ResponseWriter, r 
 		return
 	}
 
-	var resp *wallet.CreateWalletAccountResponse
-	err := g.walletClient.Invoke(ctx, "/wallet.WalletService/CreateWalletAccount", &req, &resp)
+    var resp *wallet.CreateWalletAccountResponse
+    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/CreateWalletAccount", &req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "CreateWalletAccount")
@@ -228,8 +224,8 @@ func (g *APIGateway) getWallet(ctx context.Context, w http.ResponseWriter, r *ht
 
 	req := &wallet.GetWalletAccountRequest{WalletId: walletID}
 	
-	var resp *wallet.GetWalletAccountResponse
-	err := g.walletClient.Invoke(ctx, "/wallet.WalletService/GetWalletAccount", req, &resp)
+    var resp *wallet.GetWalletAccountResponse
+    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/GetWalletAccount", req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "GetWalletAccount")
@@ -253,8 +249,8 @@ func (g *APIGateway) deposit(ctx context.Context, w http.ResponseWriter, r *http
 	}
 	req.WalletId = walletID
 
-	var resp *wallet.DepositResponse
-	err := g.walletClient.Invoke(ctx, "/wallet.WalletService/Deposit", &req, &resp)
+    var resp *wallet.DepositResponse
+    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/Deposit", &req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "Deposit")
@@ -278,8 +274,8 @@ func (g *APIGateway) withdraw(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	req.WalletId = walletID
 
-	var resp *wallet.WithdrawalResponse
-	err := g.walletClient.Invoke(ctx, "/wallet.WalletService/Withdrawal", &req, &resp)
+    var resp *wallet.WithdrawalResponse
+    err := g.walletClient.Invoke(ctx, "/wallet.WalletService/Withdrawal", &req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "Withdrawal")
@@ -313,8 +309,8 @@ func (g *APIGateway) createSettlement(ctx context.Context, w http.ResponseWriter
 		return
 	}
 
-	var resp *settlement.CreateSettlementResponse
-	err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/CreateSettlement", &req, &resp)
+    var resp *settlement.CreateSettlementResponse
+    err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/CreateSettlement", &req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "settlement", "CreateSettlement")
@@ -333,8 +329,8 @@ func (g *APIGateway) getSettlement(ctx context.Context, w http.ResponseWriter, r
 
 	req := &settlement.GetSettlementRequest{SettlementId: settlementID}
 	
-	var resp *settlement.GetSettlementResponse
-	err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/GetSettlement", req, &resp)
+    var resp *settlement.GetSettlementResponse
+    err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/GetSettlement", req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "settlement", "GetSettlement")
@@ -358,8 +354,8 @@ func (g *APIGateway) completeSettlement(ctx context.Context, w http.ResponseWrit
 	}
 	req.SettlementId = settlementID
 
-	var resp *settlement.CompleteSettlementResponse
-	err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/CompleteSettlement", &req, &resp)
+    var resp *settlement.CompleteSettlementResponse
+    err := g.settlementClient.Invoke(ctx, "/settlement.SettlementService/CompleteSettlement", &req, &resp)
 	
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "settlement", "CompleteSettlement")
@@ -387,12 +383,12 @@ func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter,
 			"error":     err.Error(),
 		}
 		
-		if kafkaErr := g.kafkaProducer.SendMessage(ctx, topic, message); kafkaErr != nil {
-			g.logger.Error("Failed to send fallback message to Kafka",
-				zap.String("topic", topic),
-				zap.Error(kafkaErr),
-			)
-		}
+        if kafkaErr := g.kafkaProducer.Publish(ctx, topic, fmt.Sprintf("%s_%s", service, method), message); kafkaErr != nil {
+            g.logger.Error("Failed to send fallback message to Kafka",
+                zap.String("topic", topic),
+                zap.Error(kafkaErr),
+            )
+        }
 		
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -430,15 +426,15 @@ func extractIDFromPath(path, resource string) string {
 }
 
 func main() {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+    logger, _ := zap.NewProduction()
+    defer logger.Sync()
 
-	metricsCollector := metrics.NewCollector()
+    metricsRegistry := metrics.NewRegistry(logger)
 
-	gateway, err := NewAPIGateway(logger, metricsCollector)
-	if err != nil {
-		logger.Fatal("Failed to create API Gateway", zap.Error(err))
-	}
+    gateway, err := NewAPIGateway(logger, metricsRegistry)
+    if err != nil {
+        logger.Fatal("Failed to create API Gateway", zap.Error(err))
+    }
 
 	router := mux.NewRouter()
 	
