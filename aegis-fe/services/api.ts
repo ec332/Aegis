@@ -1,129 +1,326 @@
-import { Market, Option, Transaction } from "@/types";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
-// Fake data
-const markets: Market[] = [
-  {
-    id: "1",
-    title: "Will Bitcoin reach $100k?",
-    description: "Predict if BTC will hit $100k by end of 2024",
-    status: "Active",
-  },
-  {
-    id: "2",
-    title: "Will Ethereum outperform Bitcoin?",
-    description: "Predict ETH performance vs BTC in Q4",
-    status: "Active",
-  },
-  {
-    id: "3",
-    title: "Will AI stocks rally?",
-    description: "Predict the movement of AI-focused stocks",
-    status: "Active",
-  },
-  {
-    id: "5",
-    title: "Tech IPO Q4 2024",
-    description: "Will there be a major tech IPO?",
-    status: "Active",
-  },
-  {
-    id: "6",
-    title: "Gold price forecast",
-    description: "Will gold break $2500/oz?",
-    status: "Active",
-  },
-];
+// API Response Types based on backend proto definitions
+export interface Market {
+  id: string;
+  question: string;
+  description: string;
+  category: string;
+  end_time?: string;
+  resolution_time?: string;
+  status: string;
+  outcome?: string;
+  created_at?: string;
+  updated_at?: string;
+}
 
-const options: Option[] = [
-  { id: "opt1", market_id: "1", title: "Yes" },
-  { id: "opt2", market_id: "1", title: "No" },
-  { id: "opt3", market_id: "2", title: "Yes" },
-  { id: "opt4", market_id: "2", title: "No" },
-  { id: "opt5", market_id: "3", title: "Rally" },
-  { id: "opt6", market_id: "3", title: "Decline" },
-  { id: "opt9", market_id: "5", title: "Yes" },
-  { id: "opt10", market_id: "5", title: "No" },
-  { id: "opt11", market_id: "6", title: "Yes" },
-  { id: "opt12", market_id: "6", title: "No" },
-];
+export interface Option {
+  id: string;
+  market_id: string;
+  option_text: string;
+  current_price: number;
+  volume: number;
+  created_at?: string;
+  updated_at?: string;
+}
 
-let transactions: Transaction[] = [
-  {
-    id: "tx1",
-    user_id: "user1",
-    market_id: "1",
-    option_id: "opt1",
-    transaction_type: "buy",
-    price: 45.50,
-    created_at: "2024-11-01T14:30:00Z",
-  },
-  {
-    id: "tx2",
-    user_id: "user1",
-    market_id: "2",
-    option_id: "opt3",
-    transaction_type: "sell",
-    price: 32.75,
-    created_at: "2024-11-01T12:15:00Z",
-  },
-  {
-    id: "tx3",
-    user_id: "user1",
-    market_id: "3",
-    option_id: "opt5",
-    transaction_type: "buy",
-    price: 67.25,
-    created_at: "2024-10-31T09:45:00Z",
-  },
-];
+export interface Transaction {
+  id: string;
+  user_id: string;
+  market_id: string;
+  option_id: string;
+  transaction_type: string;
+  price: number;
+  created_at: string;
+}
 
-// Markets API
+export interface WalletAccount {
+  id: string;
+  user_id: string;
+  address: string;
+  currency: string;
+  total_balance: number;
+  available_balance: number;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  wallet_id: string;
+  market_id?: string;
+  type: string;
+  amount: number;
+  status: string;
+  reference_id?: string;
+  metadata?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Settlement {
+  id: string;
+  market_id: string;
+  winning_option_id: string;
+  total_pool: number;
+  winning_pool: number;
+  status: string;
+  settled_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Error handling and retry logic
+class APIError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'APIError';
+  }
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  maxRetries = 3,
+  retryDelay = 1000
+): Promise<Response> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+
+      // If we get a 202 Accepted, it means the request was queued for async processing
+      if (response.status === 202) {
+        console.log('Request queued for async processing');
+        return response;
+      }
+
+      if (!response.ok) {
+        throw new APIError(response.status, `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return response;
+    } catch (error) {
+      if (attempt === maxRetries - 1) {
+        throw error;
+      }
+      
+      // Exponential backoff
+      const delay = retryDelay * Math.pow(2, attempt);
+      console.log(`Retry attempt ${attempt + 1} after ${delay}ms delay`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw new Error('Max retries exceeded');
+}
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (response.status === 202) {
+    // Return a default response for async processing
+    return {} as T;
+  }
+  
+  const data = await response.json();
+  return data as T;
+}
+
+// Market APIs
 export async function fetchMarkets(): Promise<Market[]> {
-  return markets;
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/markets`);
+    const data = await handleResponse<{ markets: Market[] }>(response);
+    return data.markets || [];
+  } catch (error) {
+    console.error('Error fetching markets:', error);
+    throw error;
+  }
 }
 
 export async function fetchMarketById(id: string): Promise<Market | null> {
-    return markets.find((m) => m.id === id) || null;
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/markets/${id}`);
+    const data = await handleResponse<{ market: Market }>(response);
+    return data.market || null;
+  } catch (error) {
+    console.error(`Error fetching market ${id}:`, error);
+    throw error;
+  }
 }
 
-// Options API
+export async function createMarket(market: Omit<Market, 'id' | 'created_at' | 'updated_at'>): Promise<Market> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/markets`, {
+      method: 'POST',
+      body: JSON.stringify(market),
+    });
+    const data = await handleResponse<{ market: Market }>(response);
+    return data.market;
+  } catch (error) {
+    console.error('Error creating market:', error);
+    throw error;
+  }
+}
+
+export async function updateMarket(id: string, updates: Partial<Market>): Promise<Market> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/markets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+    const data = await handleResponse<{ market: Market }>(response);
+    return data.market;
+  } catch (error) {
+    console.error(`Error updating market ${id}:`, error);
+    throw error;
+  }
+}
+
+// Options APIs
 export async function fetchOptionsByMarketId(marketId: string): Promise<Option[]> {
-  return options.filter((opt) => opt.market_id === marketId);
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/markets/${marketId}/options`);
+    const data = await handleResponse<{ options: Option[] }>(response);
+    return data.options || [];
+  } catch (error) {
+    console.error(`Error fetching options for market ${marketId}:`, error);
+    throw error;
+  }
 }
 
-export async function fetchOptionById(id: string): Promise<Option | null> {
-  return options.find((opt) => opt.id === id) || null;
+// Wallet APIs
+export async function createWallet(userId: string, currency: string = 'USD'): Promise<WalletAccount> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, currency }),
+    });
+    const data = await handleResponse<{ account: WalletAccount }>(response);
+    return data.account;
+  } catch (error) {
+    console.error('Error creating wallet:', error);
+    throw error;
+  }
 }
 
-// Transactions API
+export async function getWallet(walletId: string): Promise<WalletAccount | null> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets/${walletId}`);
+    const data = await handleResponse<{ account: WalletAccount }>(response);
+    return data.account || null;
+  } catch (error) {
+    console.error(`Error fetching wallet ${walletId}:`, error);
+    throw error;
+  }
+}
+
+export async function deposit(walletId: string, amount: number, referenceId?: string): Promise<WalletTransaction> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets/${walletId}/deposit`, {
+      method: 'POST',
+      body: JSON.stringify({ account_id: walletId, amount, reference_id: referenceId }),
+    });
+    const data = await handleResponse<{ transaction: WalletTransaction }>(response);
+    return data.transaction;
+  } catch (error) {
+    console.error(`Error depositing to wallet ${walletId}:`, error);
+    throw error;
+  }
+}
+
+export async function withdraw(walletId: string, amount: number, referenceId?: string): Promise<WalletTransaction> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets/${walletId}/withdraw`, {
+      method: 'POST',
+      body: JSON.stringify({ account_id: walletId, amount, reference_id: referenceId }),
+    });
+    const data = await handleResponse<{ transaction: WalletTransaction }>(response);
+    return data.transaction;
+  } catch (error) {
+    console.error(`Error withdrawing from wallet ${walletId}:`, error);
+    throw error;
+  }
+}
+
+// Settlement APIs
+export async function createSettlement(marketId: string, winningOptionId: string): Promise<Settlement> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/settlements`, {
+      method: 'POST',
+      body: JSON.stringify({ market_id: marketId, winning_option_id: winningOptionId }),
+    });
+    const data = await handleResponse<{ settlement: Settlement }>(response);
+    return data.settlement;
+  } catch (error) {
+    console.error('Error creating settlement:', error);
+    throw error;
+  }
+}
+
+export async function getSettlement(settlementId: string): Promise<Settlement | null> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/settlements/${settlementId}`);
+    const data = await handleResponse<{ settlement: Settlement }>(response);
+    return data.settlement || null;
+  } catch (error) {
+    console.error(`Error fetching settlement ${settlementId}:`, error);
+    throw error;
+  }
+}
+
+export async function completeSettlement(settlementId: string): Promise<Settlement> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/settlements/${settlementId}/complete`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    });
+    const data = await handleResponse<{ settlement: Settlement }>(response);
+    return data.settlement;
+  } catch (error) {
+    console.error(`Error completing settlement ${settlementId}:`, error);
+    throw error;
+  }
+}
+
+// Health check
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/health`);
+    return response.ok;
+  } catch (error) {
+    console.error('Health check failed:', error);
+    return false;
+  }
+}
+
+// Legacy transaction APIs (for backward compatibility)
 export async function fetchTransactions(): Promise<Transaction[]> {
-  return transactions;
+  console.warn('fetchTransactions is deprecated. Use wallet transactions instead.');
+  return [];
 }
 
 export async function createTransaction(
   transaction: Omit<Transaction, "id">
 ): Promise<Transaction> {
-  const newTransaction: Transaction = {
-    ...transaction,
-    id: `tx${Date.now()}`,
-  };
-  transactions.push(newTransaction);
-  return newTransaction;
+  console.warn('createTransaction is deprecated. Use wallet operations instead.');
+  return { ...transaction, id: `tx${Date.now()}` };
 }
 
 export async function updateTransaction(
   id: string,
   updates: Partial<Transaction>
 ): Promise<Transaction | null> {
-  const index = transactions.findIndex((t) => t.id === id);
-  if (index === -1) return null;
-  transactions[index] = { ...transactions[index], ...updates };
-  return transactions[index];
+  console.warn('updateTransaction is deprecated.');
+  return null;
 }
 
 export async function deleteTransaction(id: string): Promise<boolean> {
-  const index = transactions.findIndex((t) => t.id === id);
-  if (index === -1) return false;
-  transactions.splice(index, 1);
-  return true;
+  console.warn('deleteTransaction is deprecated.');
+  return false;
 }

@@ -1,12 +1,27 @@
 import { create } from "zustand";
-import { Market, Option, Transaction } from "@/types";
+import { 
+  Market, 
+  Option, 
+  Transaction, 
+  WalletAccount, 
+  WalletTransaction, 
+  Settlement,
+  APIError 
+} from "@/types";
 import {
   fetchMarkets,
+  fetchMarketById,
+  createMarket as apiCreateMarket,
+  updateMarket as apiUpdateMarket,
   fetchOptionsByMarketId,
-  fetchTransactions,
-  createTransaction as apiCreateTransaction,
-  updateTransaction as apiUpdateTransaction,
-  deleteTransaction as apiDeleteTransaction,
+  createWallet as apiCreateWallet,
+  getWallet as apiGetWallet,
+  deposit as apiDeposit,
+  withdraw as apiWithdraw,
+  createSettlement as apiCreateSettlement,
+  getSettlement as apiGetSettlement,
+  completeSettlement as apiCompleteSettlement,
+  checkHealth,
 } from "@/services/api";
 
 interface AppState {
@@ -14,32 +29,75 @@ interface AppState {
   markets: Market[];
   marketOptions: { [key: string]: Option[] };
   
-  // Transactions
+  // Wallet
+  walletAccounts: WalletAccount[];
+  walletTransactions: WalletTransaction[];
+  currentWallet: WalletAccount | null;
+  
+  // Settlements
+  settlements: Settlement[];
+  
+  // Legacy transactions
   transactions: Transaction[];
   
   // Loading states
   isLoadingMarkets: boolean;
   isLoadingOptions: boolean;
   isLoadingTransactions: boolean;
+  isLoadingWallet: boolean;
+  isLoadingSettlements: boolean;
+  
+  // Error states
+  error: APIError | null;
+  isBackendHealthy: boolean;
   
   // Actions
   initializeApp: () => Promise<void>;
   loadMarkets: () => Promise<void>;
+  loadMarketById: (marketId: string) => Promise<Market | null>;
+  createMarket: (market: Omit<Market, 'id' | 'created_at' | 'updated_at'>) => Promise<Market>;
+  updateMarket: (id: string, updates: Partial<Market>) => Promise<Market>;
   loadOptionsForMarket: (marketId: string) => Promise<void>;
   loadTransactions: () => Promise<void>;
+  
+  // Wallet actions
+  createWallet: (userId: string, currency?: string) => Promise<WalletAccount>;
+  loadWallet: (walletId: string) => Promise<WalletAccount | null>;
+  loadCurrentUserWallet: (userId: string) => Promise<void>;
+  depositFunds: (walletId: string, amount: number, referenceId?: string) => Promise<WalletTransaction>;
+  withdrawFunds: (walletId: string, amount: number, referenceId?: string) => Promise<WalletTransaction>;
+  
+  // Settlement actions
+  createSettlement: (marketId: string, winningOptionId: string) => Promise<Settlement>;
+  loadSettlement: (settlementId: string) => Promise<Settlement | null>;
+  completeSettlement: (settlementId: string) => Promise<Settlement>;
+  
+  // Legacy actions
   addTransaction: (transaction: Omit<Transaction, "id">) => Promise<void>;
   removeTransaction: (transactionId: string) => Promise<void>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
+  
+  // Utility actions
+  clearError: () => void;
+  checkBackendHealth: () => Promise<void>;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   markets: [],
   marketOptions: {},
+  walletAccounts: [],
+  walletTransactions: [],
+  currentWallet: null,
+  settlements: [],
   transactions: [],
   isLoadingMarkets: false,
   isLoadingOptions: false,
   isLoadingTransactions: false,
+  isLoadingWallet: false,
+  isLoadingSettlements: false,
+  error: null,
+  isBackendHealthy: false,
 
   // Actions
   initializeApp: async () => {
@@ -50,9 +108,11 @@ export const useAppStore = create<AppState>((set) => ({
     });
     
     try {
-      const [markets, transactions] = await Promise.all([
+      // Check backend health first
+      await get().checkBackendHealth();
+      
+      const [markets] = await Promise.all([
         fetchMarkets(),
-        fetchTransactions(),
       ]);
       
       // Load options for all markets
@@ -66,7 +126,6 @@ export const useAppStore = create<AppState>((set) => ({
       
       set({
         markets,
-        transactions,
         marketOptions: marketOptionsMap,
         isLoadingMarkets: false,
         isLoadingTransactions: false,
@@ -75,6 +134,7 @@ export const useAppStore = create<AppState>((set) => ({
     } catch (error) {
       console.error("Error initializing app:", error);
       set({
+        error: error as APIError,
         isLoadingMarkets: false,
         isLoadingTransactions: false,
         isLoadingOptions: false,
@@ -89,7 +149,54 @@ export const useAppStore = create<AppState>((set) => ({
       set({ markets, isLoadingMarkets: false });
     } catch (error) {
       console.error("Error loading markets:", error);
-      set({ isLoadingMarkets: false });
+      set({ 
+        error: error as APIError,
+        isLoadingMarkets: false 
+      });
+    }
+  },
+
+  loadMarketById: async (marketId: string) => {
+    try {
+      const market = await fetchMarketById(marketId);
+      if (market) {
+        set((state) => ({
+          markets: state.markets.map(m => m.id === marketId ? market : m)
+        }));
+      }
+      return market;
+    } catch (error) {
+      console.error(`Error loading market ${marketId}:`, error);
+      set({ error: error as APIError });
+      return null;
+    }
+  },
+
+  createMarket: async (market: Omit<Market, 'id' | 'created_at' | 'updated_at'>) => {
+    try {
+      const newMarket = await apiCreateMarket(market);
+      set((state) => ({
+        markets: [...state.markets, newMarket]
+      }));
+      return newMarket;
+    } catch (error) {
+      console.error("Error creating market:", error);
+      set({ error: error as APIError });
+      throw error;
+    }
+  },
+
+  updateMarket: async (id: string, updates: Partial<Market>) => {
+    try {
+      const updatedMarket = await apiUpdateMarket(id, updates);
+      set((state) => ({
+        markets: state.markets.map(m => m.id === id ? updatedMarket : m)
+      }));
+      return updatedMarket;
+    } catch (error) {
+      console.error(`Error updating market ${id}:`, error);
+      set({ error: error as APIError });
+      throw error;
     }
   },
 
@@ -105,58 +212,176 @@ export const useAppStore = create<AppState>((set) => ({
         isLoadingOptions: false,
       }));
     } catch (error) {
-      console.error("Error loading options:", error);
-      set({ isLoadingOptions: false });
+      console.error(`Error loading options for market ${marketId}:`, error);
+      set({ 
+        error: error as APIError,
+        isLoadingOptions: false 
+      });
     }
   },
 
   loadTransactions: async () => {
     set({ isLoadingTransactions: true });
     try {
-      const transactions = await fetchTransactions();
-      set({ transactions, isLoadingTransactions: false });
+      // This is now legacy - wallet transactions should be used instead
+      set({ isLoadingTransactions: false });
     } catch (error) {
       console.error("Error loading transactions:", error);
-      set({ isLoadingTransactions: false });
+      set({ 
+        error: error as APIError,
+        isLoadingTransactions: false 
+      });
     }
   },
 
-  addTransaction: async (transaction: Omit<Transaction, "id">) => {
+  // Wallet actions
+  createWallet: async (userId: string, currency: string = 'USD') => {
     try {
-      const newTransaction = await apiCreateTransaction(transaction);
+      const wallet = await apiCreateWallet(userId, currency);
       set((state) => ({
-        transactions: [...state.transactions, newTransaction],
+        walletAccounts: [...state.walletAccounts, wallet]
       }));
+      return wallet;
     } catch (error) {
-      console.error("Error adding transaction:", error);
+      console.error("Error creating wallet:", error);
+      set({ error: error as APIError });
+      throw error;
     }
+  },
+
+  loadWallet: async (walletId: string) => {
+    try {
+      const wallet = await apiGetWallet(walletId);
+      if (wallet) {
+        set((state) => ({
+          walletAccounts: state.walletAccounts.map(w => w.id === walletId ? wallet : w)
+        }));
+      }
+      return wallet;
+    } catch (error) {
+      console.error(`Error loading wallet ${walletId}:`, error);
+      set({ error: error as APIError });
+      return null;
+    }
+  },
+
+  loadCurrentUserWallet: async (userId: string) => {
+    set({ isLoadingWallet: true });
+    try {
+      // For now, create a wallet if one doesn't exist
+      // In a real app, you'd fetch the user's existing wallet
+      const wallet = await apiCreateWallet(userId);
+      set({ 
+        currentWallet: wallet,
+        isLoadingWallet: false 
+      });
+    } catch (error) {
+      console.error(`Error loading user wallet for ${userId}:`, error);
+      set({ 
+        error: error as APIError,
+        isLoadingWallet: false 
+      });
+    }
+  },
+
+  depositFunds: async (walletId: string, amount: number, referenceId?: string) => {
+    try {
+      const transaction = await apiDeposit(walletId, amount, referenceId);
+      set((state) => ({
+        walletTransactions: [...state.walletTransactions, transaction]
+      }));
+      return transaction;
+    } catch (error) {
+      console.error(`Error depositing to wallet ${walletId}:`, error);
+      set({ error: error as APIError });
+      throw error;
+    }
+  },
+
+  withdrawFunds: async (walletId: string, amount: number, referenceId?: string) => {
+    try {
+      const transaction = await apiWithdraw(walletId, amount, referenceId);
+      set((state) => ({
+        walletTransactions: [...state.walletTransactions, transaction]
+      }));
+      return transaction;
+    } catch (error) {
+      console.error(`Error withdrawing from wallet ${walletId}:`, error);
+      set({ error: error as APIError });
+      throw error;
+    }
+  },
+
+  // Settlement actions
+  createSettlement: async (marketId: string, winningOptionId: string) => {
+    try {
+      const settlement = await apiCreateSettlement(marketId, winningOptionId);
+      set((state) => ({
+        settlements: [...state.settlements, settlement]
+      }));
+      return settlement;
+    } catch (error) {
+      console.error("Error creating settlement:", error);
+      set({ error: error as APIError });
+      throw error;
+    }
+  },
+
+  loadSettlement: async (settlementId: string) => {
+    try {
+      const settlement = await apiGetSettlement(settlementId);
+      if (settlement) {
+        set((state) => ({
+          settlements: state.settlements.map(s => s.id === settlementId ? settlement : s)
+        }));
+      }
+      return settlement;
+    } catch (error) {
+      console.error(`Error loading settlement ${settlementId}:`, error);
+      set({ error: error as APIError });
+      return null;
+    }
+  },
+
+  completeSettlement: async (settlementId: string) => {
+    try {
+      const settlement = await apiCompleteSettlement(settlementId);
+      set((state) => ({
+        settlements: state.settlements.map(s => s.id === settlementId ? settlement : s)
+      }));
+      return settlement;
+    } catch (error) {
+      console.error(`Error completing settlement ${settlementId}:`, error);
+      set({ error: error as APIError });
+      throw error;
+    }
+  },
+
+  // Legacy actions
+  addTransaction: async (transaction: Omit<Transaction, "id">) => {
+    console.warn("addTransaction is deprecated. Use wallet operations instead.");
   },
 
   removeTransaction: async (transactionId: string) => {
-    try {
-      const success = await apiDeleteTransaction(transactionId);
-      if (success) {
-        set((state) => ({
-          transactions: state.transactions.filter((t) => t.id !== transactionId),
-        }));
-      }
-    } catch (error) {
-      console.error("Error removing transaction:", error);
-    }
+    console.warn("removeTransaction is deprecated.");
   },
 
   updateTransaction: async (id: string, updates: Partial<Transaction>) => {
+    console.warn("updateTransaction is deprecated.");
+  },
+
+  // Utility actions
+  clearError: () => {
+    set({ error: null });
+  },
+
+  checkBackendHealth: async () => {
     try {
-      const updated = await apiUpdateTransaction(id, updates);
-      if (updated) {
-        set((state) => ({
-          transactions: state.transactions.map((t) =>
-            t.id === id ? updated : t
-          ),
-        }));
-      }
+      const isHealthy = await checkHealth();
+      set({ isBackendHealthy: isHealthy });
     } catch (error) {
-      console.error("Error updating transaction:", error);
+      console.error("Backend health check failed:", error);
+      set({ isBackendHealthy: false });
     }
   },
 }));

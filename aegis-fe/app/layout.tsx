@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: "Aegis",
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-white text-black m-0 p-0">
-        <Navbar/>
-        {children}
+        <ErrorBoundary>
+          <Navbar/>
+          {children}
+        </ErrorBoundary>
       </body>
     </html>
   );
