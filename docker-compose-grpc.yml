@@ -1,0 +1,173 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./transaction-service/sql/create.sql:/docker-entrypoint-initdb.d/01_create.sql:ro
+      - ./market/sql/create.sql:/docker-entrypoint-initdb.d/02_create_market.sql:ro
+      - ./wallet-service/sql/create.sql:/docker-entrypoint-initdb.d/03_create_wallet.sql:ro
+      - ./settlement-service/sql/create.sql:/docker-entrypoint-initdb.d/04_create_settlement.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile.grpc
+    environment:
+      PORT: 8080
+      MARKET_SERVICE_GRPC_ADDR: market-service:50051
+      WALLET_SERVICE_GRPC_ADDR: wallet-service:50052
+      SETTLEMENT_SERVICE_GRPC_ADDR: settlement-service:50053
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      - market-service
+      - wallet-service
+      - settlement-service
+      - kafka
+    ports:
+      - "8080:8080"
+
+  transaction-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_DB_HOST: postgres
+      APP_DB_PORT: 5432
+      APP_DB_NAME: transaction
+      APP_DB_USER: postgres
+      APP_DB_PASSWORD: postgres
+      APP_HTTP_PORT: 5555
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+
+  market-service:
+    build:
+      context: .
+      dockerfile: market/Dockerfile.grpc
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: aegis_market
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      GRPC_PORT: 50051
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8081"  # HTTP port
+      - "50051:50051" # gRPC port
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  settlement-service:
+    build:
+      context: .
+      dockerfile: settlement/Dockerfile.grpc
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: aegis_settlement
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      GRPC_PORT: 50053
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8084:8084"  # HTTP port
+      - "50053:50053" # gRPC port
+
+  wallet-service:
+    build:
+      context: .
+      dockerfile: wallet/Dockerfile.grpc
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: aegis_wallet
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      GRPC_PORT: 50052
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8082:8082"  # HTTP port
+      - "50052:50052" # gRPC port
+
+volumes:
+  pgdata:
+  kafka-data:
+  zookeeper-data:
+  zookeeper-logs:
