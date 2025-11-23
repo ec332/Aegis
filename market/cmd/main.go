@@ -101,6 +101,12 @@ func main() {
 	r.Put("/markets/{marketId}", api.UpdateMarket(svc))
 	r.Get("/markets/{marketId}/stream", api.StreamLiquidityUpdates(svc))
 
+	// User routes
+	r.Post("/users", api.CreateUser(svc))
+	r.Get("/users/{userId}", api.GetUser(svc))
+	r.Get("/users/wallet/{walletAddress}", api.GetUserByWallet(svc))
+	r.Put("/users/{userId}", api.UpdateUser(svc))
+
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	srv := &http.Server{
