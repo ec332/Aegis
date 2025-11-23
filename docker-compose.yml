@@ -11,7 +11,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./sql/create.sql:/docker-entrypoint-initdb.d/01_create.sql:ro
+      - ./transaction-service/sql/create.sql:/docker-entrypoint-initdb.d/01_create.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d transaction"]
       interval: 5s
@@ -23,11 +23,12 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: transaction
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      APP_DB_HOST: postgres
+      APP_DB_PORT: 5432
+      APP_DB_NAME: transaction
+      APP_DB_USER: postgres
+      APP_DB_PASSWORD: postgres
+      APP_HTTP_PORT: 5555
     depends_on:
       postgres:
         condition: service_healthy
