@@ -7,9 +7,11 @@ import (
     "net/http"
     "strings"
     "time"
+    "os"
 
     "github.com/gorilla/mux"
     "go.uber.org/zap"
+    "github.com/go-chi/cors"
 
     resgrpc "github.com/aegis/shared/grpc"
     "github.com/aegis/shared/kafka"
@@ -19,13 +21,17 @@ import (
     settlement "github.com/aegis/proto/gen/settlement"
 )
 
+type KafkaPublisher interface {
+    Publish(ctx context.Context, topic string, key string, value interface{}) error
+}
+
 type APIGateway struct {
     logger          *zap.Logger
     metrics         *metrics.Registry
     marketClient    *resgrpc.ResilientClient
     walletClient    *resgrpc.ResilientClient
     settlementClient *resgrpc.ResilientClient
-    kafkaProducer   *kafka.Producer
+    kafkaProducer   KafkaPublisher
     marketStub      market.MarketServiceClient
     walletStub      wallet.WalletServiceClient
     settlementStub  settlement.SettlementServiceClient
@@ -51,7 +57,15 @@ func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIG
         return nil, fmt.Errorf("failed to create settlement client: %w", err)
     }
 
-    kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: []string{"kafka:9092"}}, logger)
+    brokersEnv := getEnv("KAFKA_BROKERS", "kafka:29092")
+    var brokers []string
+    for _, b := range strings.Split(brokersEnv, ",") {
+        b = strings.TrimSpace(b)
+        if b != "" {
+            brokers = append(brokers, b)
+        }
+    }
+    kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: brokers}, logger)
 
     return &APIGateway{
         logger:           logger,
@@ -377,11 +391,13 @@ func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter,
 			"error":     err.Error(),
 		}
 		
-        if kafkaErr := g.kafkaProducer.Publish(ctx, topic, fmt.Sprintf("%s_%s", service, method), message); kafkaErr != nil {
-            g.logger.Error("Failed to send fallback message to Kafka",
-                zap.String("topic", topic),
-                zap.Error(kafkaErr),
-            )
+        if g.kafkaProducer != nil {
+            if kafkaErr := g.kafkaProducer.Publish(ctx, topic, fmt.Sprintf("%s_%s", service, method), message); kafkaErr != nil {
+                g.logger.Error("Failed to send fallback message to Kafka",
+                    zap.String("topic", topic),
+                    zap.Error(kafkaErr),
+                )
+            }
         }
 		
 		w.WriteHeader(http.StatusAccepted)
@@ -430,7 +446,7 @@ func main() {
         logger.Fatal("Failed to create API Gateway", zap.Error(err))
     }
 
-	router := mux.NewRouter()
+    router := mux.NewRouter()
 	
 	// Market routes
 	router.HandleFunc("/api/markets", gateway.handleMarketRequest).Methods("GET", "POST")
@@ -454,8 +470,53 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
 	}).Methods("GET")
 
-	logger.Info("Starting API Gateway on :8080")
-	if err := http.ListenAndServe(":8080", router); err != nil {
-		logger.Fatal("Failed to start server", zap.Error(err))
-	}
+    originsEnv := strings.TrimSpace(getEnv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"))
+    methodsEnv := strings.TrimSpace(getEnv("CORS_METHODS", "GET,POST,PUT,DELETE,OPTIONS"))
+    headersEnv := strings.TrimSpace(getEnv("CORS_HEADERS", "Accept,Content-Type,Authorization"))
+
+    var origins []string
+    for _, o := range strings.Split(originsEnv, ",") {
+        o = strings.TrimSpace(o)
+        if o != "" {
+            origins = append(origins, o)
+        }
+    }
+    var methods []string
+    for _, m := range strings.Split(methodsEnv, ",") {
+        m = strings.TrimSpace(m)
+        if m != "" {
+            methods = append(methods, m)
+        }
+    }
+    var headers []string
+    for _, h := range strings.Split(headersEnv, ",") {
+        h = strings.TrimSpace(h)
+        if h != "" {
+            headers = append(headers, h)
+        }
+    }
+
+    corsMiddleware := cors.Handler(cors.Options{
+        AllowedOrigins:   origins,
+        AllowedMethods:   methods,
+        AllowedHeaders:   headers,
+        ExposedHeaders:   []string{"Content-Length"},
+        AllowCredentials: true,
+        MaxAge:           300,
+    })
+
+    handler := corsMiddleware(router)
+
+    logger.Info("Starting API Gateway on :8080")
+    if err := http.ListenAndServe(":8080", handler); err != nil {
+        logger.Fatal("Failed to start server", zap.Error(err))
+    }
+}
+
+func getEnv(key, def string) string {
+    v := strings.TrimSpace(os.Getenv(key))
+    if v != "" {
+        return v
+    }
+    return def
 }

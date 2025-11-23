@@ -56,6 +56,12 @@ func main() {
     r.Use(middleware.Recoverer)
     r.Use(middleware.Timeout(60 * time.Second))
 
+    r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        _, _ = w.Write([]byte("{\"status\":\"healthy\"}"))
+    })
+
     handler := httpHandlers.New(pool, logger)
     handler.RegisterRoutes(r)
 

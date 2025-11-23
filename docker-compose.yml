@@ -57,7 +57,7 @@ services:
       MARKET_SERVICE_GRPC_ADDR: market-service:50051
       WALLET_SERVICE_GRPC_ADDR: wallet-service:50052
       SETTLEMENT_SERVICE_GRPC_ADDR: settlement-service:50053
-      KAFKA_BROKERS: kafka:9092
+      KAFKA_BROKERS: kafka:29092
     depends_on:
       - market-service
       - wallet-service

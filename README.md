@@ -287,7 +287,7 @@ Each service supports the following environment variables:
 
 ## 🚢 Deployment
 
-### Docker Compose Deployment
+### Docker Compose Deployment (Local Development)
 ```bash
 # Start all services
 docker-compose up -d
@@ -301,6 +301,79 @@ docker-compose down
 # Rebuild and restart
 docker-compose down && docker-compose up --build -d
 ```
+
+### Google Cloud Run Deployment (Production)
+
+Deploy your Aegis microservices to Google Cloud Run using the provided Terraform configuration:
+
+#### Prerequisites
+- Google Cloud SDK installed and authenticated
+- Terraform installed
+- Container images pushed to Google Container Registry (GCR) or Artifact Registry
+
+#### Quick Start
+1. **Navigate to Terraform directory:**
+   ```bash
+   cd terraform
+   ```
+
+2. **Authenticate with GCP:**
+   ```bash
+   gcloud auth application-default login
+   ```
+
+3. **Initialize Terraform:**
+   ```bash
+   terraform init
+   ```
+
+4. **Deploy API Gateway:**
+   ```bash
+   terraform apply \
+     -var 'project_id=my-gcp-project' \
+     -var 'region=us-central1' \
+     -var 'service_name=api-gateway' \
+     -var 'image=gcr.io/my-project/api-gateway:latest' \
+     -var 'allow_unauthenticated=true' \
+     -var 'cpu=1' \
+     -var 'memory=512Mi' \
+     -var 'concurrency=100' \
+     -var 'env_vars={
+       KAFKA_BROKERS="kafka:9092",
+       CORS_ORIGINS="*",
+       MARKET_SERVICE_URL="market-service:8081",
+       WALLET_SERVICE_URL="wallet-service:8082",
+       SETTLEMENT_SERVICE_URL="settlement-service:8084",
+       TRANSACTION_SERVICE_URL="transaction-service:5555"
+     }'
+   ```
+
+5. **Deploy other services** (repeat with appropriate service names and images):
+   ```bash
+   # Market Service
+   terraform apply -var 'service_name=market-service' -var 'image=gcr.io/my-project/market-service:latest' -var 'env_vars={REDIS_HOST="redis:6379",DB_HOST="postgres:5432"}'
+   
+   # Wallet Service
+   terraform apply -var 'service_name=wallet-service' -var 'image=gcr.io/my-project/wallet-service:latest' -var 'env_vars={DB_HOST="postgres:5432"}'
+   
+   # Settlement Service
+   terraform apply -var 'service_name=settlement-service' -var 'image=gcr.io/my-project/settlement-service:latest' -var 'env_vars={DB_HOST="postgres:5432"}'
+   ```
+
+#### Configuration Options
+- **CPU/Memory**: Adjust `cpu` (1, 2, 4) and `memory` (512Mi, 1Gi, 2Gi+)
+- **Scaling**: Set `min_instances` and `max_instances` for autoscaling
+- **Security**: Set `allow_unauthenticated=false` for private services
+- **Networking**: Configure `vpc_connector` for VPC access
+- **Environment Variables**: Pass service-specific configuration via `env_vars`
+
+#### Production Considerations
+- Use Artifact Registry for container images
+- Configure Cloud SQL for PostgreSQL instead of containerized database
+- Use Memorystore for Redis instead of containerized Redis
+- Set up Cloud Monitoring and Logging
+- Configure proper IAM roles and service accounts
+- Use Cloud Load Balancer for custom domains and SSL
 
 ### Individual Service Deployment
 Each service can be deployed independently:
@@ -380,3 +453,28 @@ Generated files are written to `proto/gen` with source-relative paths.
 
 - The Compose `version:` field is obsolete and has been removed to silence warnings
 - Use `docker compose up -d` and `docker compose build` as usual
+
+## CORS Configuration
+
+- Environment variables:
+  - `CORS_ORIGINS`: comma-separated origins (default `http://localhost:3000,http://127.0.0.1:3000`)
+  - `CORS_METHODS`: allowed methods (default `GET,POST,PUT,DELETE,OPTIONS`)
+  - `CORS_HEADERS`: allowed headers (default `Accept,Content-Type,Authorization`)
+- The API Gateway includes CORS middleware that:
+  - Sets `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`
+  - Handles preflight `OPTIONS` requests
+  - Exposes `Content-Length` and supports credentials
+- Quick tests:
+  - Simple request: `curl -i http://localhost:8080/health -H 'Origin: http://localhost:3000'`
+  - Preflight: `curl -i -X OPTIONS http://localhost:8080/api/markets -H 'Origin: http://localhost:3000' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: Content-Type, Authorization'`
+## Kafka & Redis (Local Containers)
+
+- Kafka runs as a single broker in KRaft mode; use the internal listener `kafka:29092`
+- Redis runs without authentication for local development
+
+- API Gateway reads brokers from `KAFKA_BROKERS` (comma-separated), default `kafka:29092`
+- Services connect to Redis at `redis:6379`
+
+- Quick checks:
+  - Kafka: `docker exec -it aegis-kafka-1 bash -lc 'kafka-topics.sh --bootstrap-server kafka:29092 --list'`
+  - Redis: `docker exec -it aegis-redis-1 redis-cli ping`
