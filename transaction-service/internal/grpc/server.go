@@ -123,20 +123,20 @@ func (s *TransactionGRPCServer) GetTransactions(ctx context.Context, req *transa
 		return nil, status.Error(codes.Internal, "failed to get transactions")
 	}
 
-	// Convert to protobuf response
-	protoTransactions := make([]*transaction.TransactionResponse, len(transactions))
-	for i, t := range transactions {
-		protoTransactions[i] = &transaction.TransactionResponse{
-			Id:              t.ID.String(),
-			MarketId:        t.MarketID.String(),
-			OptionId:        t.OptionID.String(),
-			UserId:          t.UserID.String(),
-			TransactionType: mapTransactionType(t.TransactionType),
-			NumberOfShares:  int32(t.NumberOfShares.IntPart()),
-			PricePerShare:   t.PricePerShare.InexactFloat64(),
-			CreatedAt:       timestamppb.New(t.CreatedAt),
-		}
-	}
+    // Convert to protobuf response
+    protoTransactions := make([]*transaction.Transaction, len(transactions))
+    for i, t := range transactions {
+        protoTransactions[i] = &transaction.Transaction{
+            Id:              t.ID.String(),
+            MarketId:        t.MarketID.String(),
+            OptionId:        t.OptionID.String(),
+            UserId:          t.UserID.String(),
+            TransactionType: mapTransactionType(t.TransactionType),
+            NumberOfShares:  int32(t.NumberOfShares.IntPart()),
+            PricePerShare:   t.PricePerShare.InexactFloat64(),
+            CreatedAt:       timestamppb.New(t.CreatedAt),
+        }
+    }
 
 	return &transaction.GetTransactionsResponse{
 		Transactions: protoTransactions,

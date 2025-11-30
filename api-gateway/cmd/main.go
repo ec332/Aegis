@@ -14,6 +14,7 @@ import (
     "github.com/gorilla/mux"
     "go.uber.org/zap"
     "github.com/go-chi/cors"
+    jwt "github.com/golang-jwt/jwt/v5"
 
     resgrpc "github.com/aegis/shared/grpc"
     "github.com/aegis/shared/kafka"
@@ -260,14 +261,24 @@ func (g *APIGateway) handleWalletRequest(w http.ResponseWriter, r *http.Request)
 }
 
 func (g *APIGateway) handleUserRequest(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	path := r.URL.Path
-	method := r.Method
+    ctx := r.Context()
+    path := r.URL.Path
+    method := r.Method
 
-	switch {
-	case method == "GET" && strings.Contains(path, "/users/wallet/"):
-		// GET /api/users/wallet/{wallet_address}
-		g.getUserByWallet(ctx, w, r)
+    switch {
+    case method == "POST" && strings.HasSuffix(path, "/auth/nonce"):
+        g.requestNonce(ctx, w, r)
+    case method == "POST" && strings.HasSuffix(path, "/auth/verify"):
+        g.verifySignature(ctx, w, r)
+    case method == "GET" && strings.HasSuffix(path, "/auth/me"):
+        g.me(ctx, w, r)
+    case method == "POST" && strings.HasSuffix(path, "/user/nonce"):
+        g.requestNonce(ctx, w, r)
+    case method == "POST" && strings.HasSuffix(path, "/user/verify"):
+        g.verifySignature(ctx, w, r)
+    case method == "GET" && strings.Contains(path, "/users/wallet/"):
+        // GET /api/users/wallet/{wallet_address}
+        g.getUserByWallet(ctx, w, r)
 	case method == "GET" && strings.Contains(path, "/users/") && !strings.Contains(path, "/wallet/"):
 		// GET /api/users/{id}
 		g.getUser(ctx, w, r)
@@ -720,10 +731,15 @@ func main() {
 	router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
 
 	
-	// User routes (now handled by Wallet Service)
-	router.HandleFunc("/api/users", gateway.handleUserRequest).Methods("POST")
-	router.HandleFunc("/api/users/{id}", gateway.handleUserRequest).Methods("GET", "PUT")
-	router.HandleFunc("/api/users/wallet/{wallet_address}", gateway.handleUserRequest).Methods("GET")
+    // User routes and auth
+    router.HandleFunc("/api/users", gateway.handleUserRequest).Methods("POST")
+    router.HandleFunc("/api/users/{id}", gateway.handleUserRequest).Methods("GET", "PUT")
+    router.HandleFunc("/api/users/wallet/{wallet_address}", gateway.handleUserRequest).Methods("GET")
+    router.HandleFunc("/user/nonce", gateway.handleUserRequest).Methods("POST")
+    router.HandleFunc("/user/verify", gateway.handleUserRequest).Methods("POST")
+    router.HandleFunc("/auth/nonce", gateway.handleUserRequest).Methods("POST")
+    router.HandleFunc("/auth/verify", gateway.handleUserRequest).Methods("POST")
+    router.HandleFunc("/auth/me", gateway.handleUserRequest).Methods("GET")
 	
 	// Settlement routes
 	router.HandleFunc("/api/settlements", gateway.handleSettlementRequest).Methods("POST")
@@ -780,6 +796,82 @@ func main() {
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		logger.Fatal("Failed to start server", zap.Error(err))
 	}
+}
+
+func (g *APIGateway) requestNonce(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    var body struct{ Wallet string `json:"wallet"` }
+    if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Wallet) == "" {
+        http.Error(w, "wallet required", http.StatusBadRequest)
+        return
+    }
+    req := &wallet.RequestNonceRequest{Wallet: body.Wallet}
+    resp, err := g.walletStub.RequestNonce(ctx, req)
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "wallet", "RequestNonce")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+func (g *APIGateway) verifySignature(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    var body struct{ Wallet string `json:"wallet"`; Signature string `json:"signature"` }
+    if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Wallet) == "" || strings.TrimSpace(body.Signature) == "" {
+        http.Error(w, "wallet and signature required", http.StatusBadRequest)
+        return
+    }
+    req := &wallet.VerifySignatureRequest{Wallet: body.Wallet, Signature: body.Signature}
+    resp, err := g.walletStub.VerifySignature(ctx, req)
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "wallet", "VerifySignature")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// GET /auth/me - returns current user profile using JWT
+func (g *APIGateway) me(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" || !strings.HasPrefix(authz, "Bearer ") {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    tokenString := strings.TrimSpace(strings.TrimPrefix(authz, "Bearer "))
+    secret := strings.TrimSpace(getEnv("AUTH_JWT_SECRET", "dev-secret"))
+
+    // Validate token and extract wallet claim
+    type validator interface{ }
+    _ = validator(nil)
+    claimsWallet, err := parseWalletFromJWT(tokenString, secret)
+    if err != nil || claimsWallet == "" {
+        http.Error(w, "invalid token", http.StatusUnauthorized)
+        return
+    }
+    resp, err := g.walletStub.GetUserByWallet(ctx, &wallet.GetUserByWalletRequest{WalletAddress: claimsWallet})
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "wallet", "GetUserByWallet")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// Minimal JWT parsing for HS256 to get wallet claim
+func parseWalletFromJWT(tokenString string, secret string) (string, error) {
+    token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+        if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("invalid signing method")
+        }
+        return []byte(secret), nil
+    })
+    if err != nil {
+        return "", err
+    }
+    if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+        if w, ok := claims["wallet"].(string); ok {
+            return w, nil
+        }
+        return "", fmt.Errorf("wallet claim missing")
+    }
+    return "", fmt.Errorf("invalid token")
 }
 
 func getEnv(key, def string) string {

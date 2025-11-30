@@ -10,7 +10,9 @@ require (
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0
 	google.golang.org/grpc v1.65.0
-	google.golang.org/protobuf v1.34.1
+    google.golang.org/protobuf v1.34.1
+    github.com/golang-jwt/jwt/v5 v5.2.1
+    github.com/ethereum/go-ethereum v1.14.13
 )
 
 require (

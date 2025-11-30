@@ -14,13 +14,14 @@ const (
 
 // User represents a user in the system
 type User struct {
-	ID            string    `json:"id"`
-	WalletAddress string    `json:"wallet_address"`
-	Balance       float64   `json:"balance"`
-	Nonce         string    `json:"nonce"`
-	Role          UserRole  `json:"role"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+    ID            string    `json:"id"`
+    WalletAddress string    `json:"wallet_address"`
+    Balance       float64   `json:"balance"`
+    Nonce         string    `json:"nonce"`
+    Role          UserRole  `json:"role"`
+    CreatedAt     time.Time `json:"created_at"`
+    UpdatedAt     time.Time `json:"updated_at"`
+    LastLogin     *time.Time `json:"last_login,omitempty"`
 }
 
 // CreateUserRequest represents the payload for creating a new user

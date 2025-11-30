@@ -1,194 +1,95 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"net"
-	"time"
+    "context"
+    "database/sql"
+    "net"
+    "os"
+    "os/signal"
+    "syscall"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    wallet "github.com/aegis/proto/gen/wallet"
+    grpcserver "github.com/aegis/shared/grpc"
+    "github.com/aegis/shared/metrics"
+    "go.uber.org/zap"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/health"
+    "google.golang.org/grpc/health/grpc_health_v1"
+    "google.golang.org/grpc/reflection"
+    _ "github.com/lib/pq"
 
-	wallet "github.com/aegis/proto/gen/wallet"
-	grpcserver "github.com/aegis/shared/grpc"
-	"github.com/aegis/shared/metrics"
-	_ "github.com/lib/pq"
+    wgrpc "aegis/wallet/internal/grpc"
+    "aegis/wallet/internal/repository"
+    "aegis/wallet/internal/service"
+    "aegis/wallet/internal/auth"
 )
 
-type WalletGRPCServer struct {
-	wallet.UnimplementedWalletServiceServer
-	accounts     map[string]*wallet.WalletAccount
-	transactions map[string][]*wallet.WalletTransaction
-	logger       *zap.Logger
-}
-
-func NewWalletGRPCServer(logger *zap.Logger) *WalletGRPCServer {
-	return &WalletGRPCServer{
-		accounts:     make(map[string]*wallet.WalletAccount),
-		transactions: make(map[string][]*wallet.WalletTransaction),
-		logger:       logger,
-	}
-}
-
-func (s *WalletGRPCServer) CreateWalletAccount(ctx context.Context, req *wallet.CreateWalletAccountRequest) (*wallet.CreateWalletAccountResponse, error) {
-	// Check if wallet already exists for this user
-	for _, acc := range s.accounts {
-		if acc.UserId == req.UserId && acc.Currency == req.Currency {
-			s.logger.Info("Wallet already exists for user", zap.String("user_id", req.UserId), zap.String("wallet_id", acc.Id))
-			return &wallet.CreateWalletAccountResponse{Account: acc}, nil
-		}
-	}
-
-	// Create new wallet if none exists
-	id := fmt.Sprintf("w-%d", time.Now().UnixNano())
-	acc := &wallet.WalletAccount{
-		Id:               id,
-		UserId:           req.UserId,
-		Address:          "",
-		Currency:         req.Currency,
-		TotalBalance:     0,
-		AvailableBalance: 0,
-		Status:           "active",
-		CreatedAt:        timestamppb.Now(),
-		UpdatedAt:        timestamppb.Now(),
-	}
-	s.accounts[id] = acc
-	s.logger.Info("Created new wallet", zap.String("user_id", req.UserId), zap.String("wallet_id", id))
-	return &wallet.CreateWalletAccountResponse{Account: acc}, nil
-}
-
-func (s *WalletGRPCServer) GetWalletAccount(ctx context.Context, req *wallet.GetWalletAccountRequest) (*wallet.GetWalletAccountResponse, error) {
-	acc, ok := s.accounts[req.Id]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	return &wallet.GetWalletAccountResponse{Account: acc}, nil
-}
-
-func (s *WalletGRPCServer) Deposit(ctx context.Context, req *wallet.DepositRequest) (*wallet.DepositResponse, error) {
-	acc, ok := s.accounts[req.AccountId]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	acc.AvailableBalance += req.Amount
-	acc.TotalBalance += req.Amount
-	acc.UpdatedAt = timestamppb.Now()
-	tx := &wallet.WalletTransaction{
-		Id:          fmt.Sprintf("t-%d", time.Now().UnixNano()),
-		WalletId:    req.AccountId,
-		Type:        "deposit",
-		Amount:      req.Amount,
-		Status:      "completed",
-		ReferenceId: req.ReferenceId,
-		Metadata:    "",
-		CreatedAt:   timestamppb.Now(),
-		UpdatedAt:   timestamppb.Now(),
-	}
-	s.transactions[req.AccountId] = append(s.transactions[req.AccountId], tx)
-	return &wallet.DepositResponse{Transaction: tx}, nil
-}
-
-func (s *WalletGRPCServer) Withdrawal(ctx context.Context, req *wallet.WithdrawalRequest) (*wallet.WithdrawalResponse, error) {
-	acc, ok := s.accounts[req.AccountId]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	if acc.AvailableBalance < req.Amount {
-		return nil, fmt.Errorf("insufficient funds")
-	}
-	acc.AvailableBalance -= req.Amount
-	acc.TotalBalance -= req.Amount
-	acc.UpdatedAt = timestamppb.Now()
-	tx := &wallet.WalletTransaction{
-		Id:          fmt.Sprintf("t-%d", time.Now().UnixNano()),
-		WalletId:    req.AccountId,
-		Type:        "withdrawal",
-		Amount:      req.Amount,
-		Status:      "completed",
-		ReferenceId: req.ReferenceId,
-		Metadata:    "",
-		CreatedAt:   timestamppb.Now(),
-		UpdatedAt:   timestamppb.Now(),
-	}
-	s.transactions[req.AccountId] = append(s.transactions[req.AccountId], tx)
-	return &wallet.WithdrawalResponse{Transaction: tx}, nil
-}
-
-func (s *WalletGRPCServer) DebitWallet(ctx context.Context, req *wallet.DebitWalletRequest) (*wallet.DebitWalletResponse, error) {
-	acc, ok := s.accounts[req.AccountId]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	if acc.AvailableBalance < req.Amount {
-		return nil, fmt.Errorf("insufficient funds")
-	}
-	acc.AvailableBalance -= req.Amount
-	acc.TotalBalance -= req.Amount
-	acc.UpdatedAt = timestamppb.Now()
-	tx := &wallet.WalletTransaction{
-		Id:          fmt.Sprintf("t-%d", time.Now().UnixNano()),
-		WalletId:    req.AccountId,
-		Type:        "debit",
-		Amount:      req.Amount,
-		Status:      "completed",
-		ReferenceId: req.ReferenceId,
-		Metadata:    "",
-		CreatedAt:   timestamppb.Now(),
-		UpdatedAt:   timestamppb.Now(),
-	}
-	s.transactions[req.AccountId] = append(s.transactions[req.AccountId], tx)
-	return &wallet.DebitWalletResponse{Transaction: tx}, nil
-}
-
-func (s *WalletGRPCServer) CreditWallet(ctx context.Context, req *wallet.CreditWalletRequest) (*wallet.CreditWalletResponse, error) {
-	acc, ok := s.accounts[req.AccountId]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	acc.AvailableBalance += req.Amount
-	acc.TotalBalance += req.Amount
-	acc.UpdatedAt = timestamppb.Now()
-	tx := &wallet.WalletTransaction{
-		Id:          fmt.Sprintf("t-%d", time.Now().UnixNano()),
-		WalletId:    req.AccountId,
-		Type:        "credit",
-		Amount:      req.Amount,
-		Status:      "completed",
-		ReferenceId: req.ReferenceId,
-		Metadata:    "",
-		CreatedAt:   timestamppb.Now(),
-		UpdatedAt:   timestamppb.Now(),
-	}
-	s.transactions[req.AccountId] = append(s.transactions[req.AccountId], tx)
-	return &wallet.CreditWalletResponse{Transaction: tx}, nil
-}
-
 func main() {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+    logger, _ := zap.NewProduction()
+    defer logger.Sync()
 
-	metricsRegistry := metrics.NewRegistry(logger)
-	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(grpcserver.UnaryServerInterceptor(logger, grpcserver.NewServerMetrics("wallet", metricsRegistry))),
-	)
-	walletServer := NewWalletGRPCServer(logger)
-	wallet.RegisterWalletServiceServer(grpcServer, walletServer)
-	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus("wallet.WalletService", grpc_health_v1.HealthCheckResponse_SERVING)
-	reflection.Register(grpcServer)
+    dbURL := getEnv("WALLET_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/aegis?sslmode=disable")
+    db, err := sql.Open("postgres", dbURL)
+    if err != nil {
+        logger.Fatal("db open failed", zap.Error(err))
+    }
+    defer db.Close()
+    if err := db.Ping(); err != nil {
+        logger.Fatal("db ping failed", zap.Error(err))
+    }
+    repo := repository.New(db)
+    if err := repo.InitSchema(context.Background()); err != nil {
+        logger.Fatal("schema init failed", zap.Error(err))
+    }
 
-	lis, err := net.Listen("tcp", ":50052")
-	if err != nil {
-		logger.Fatal("Failed to listen", zap.Error(err))
-	}
+    svc := service.New(repo, logger)
+    tm := auth.NewTokenManager()
 
-	logger.Info("Starting Wallet gRPC server on :50052")
-	if err := grpcServer.Serve(lis); err != nil {
-		logger.Fatal("Failed to serve", zap.Error(err))
-	}
+    metricsRegistry := metrics.NewRegistry(logger)
+    grpcServer := grpc.NewServer(
+        grpc.ChainUnaryInterceptor(
+            wgrpc.AuthUnaryInterceptor(logger, tm),
+            grpcserver.UnaryServerInterceptor(logger, grpcserver.NewServerMetrics("wallet", metricsRegistry)),
+            grpcserver.RecoveryInterceptor(logger),
+        ),
+        grpc.ChainStreamInterceptor(
+            grpcserver.StreamServerInterceptor(logger, grpcserver.NewServerMetrics("wallet", metricsRegistry)),
+            grpcserver.StreamRecoveryInterceptor(logger),
+        ),
+    )
+
+    server := wgrpc.NewServer(svc, logger, tm)
+    wallet.RegisterWalletServiceServer(grpcServer, server)
+
+    healthServer := health.NewServer()
+    grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+    healthServer.SetServingStatus("wallet.WalletService", grpc_health_v1.HealthCheckResponse_SERVING)
+    reflection.Register(grpcServer)
+
+    port := getEnv("WALLET_SERVICE_PORT", "50052")
+    lis, err := net.Listen("tcp", ":"+port)
+    if err != nil {
+        logger.Fatal("listen failed", zap.Error(err))
+    }
+
+    go func() {
+        if err := grpcServer.Serve(lis); err != nil {
+            logger.Fatal("serve failed", zap.Error(err))
+        }
+    }()
+
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    <-quit
+
+    healthServer.SetServingStatus("wallet.WalletService", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+    grpcServer.GracefulStop()
+}
+
+func getEnv(k, d string) string {
+    v := os.Getenv(k)
+    if v == "" {
+        return d
+    }
+    return v
 }

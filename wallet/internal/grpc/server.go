@@ -1,31 +1,35 @@
 package grpc
 
 import (
-	"context"
+    "context"
+    "time"
 
-	"aegis/wallet/internal/service"
-	"aegis/wallet/pkg/models"
+    "aegis/wallet/internal/service"
+    "aegis/wallet/pkg/models"
+    "aegis/wallet/internal/auth"
 
-	wallet "github.com/aegis/proto/gen/wallet"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    wallet "github.com/aegis/proto/gen/wallet"
+    "go.uber.org/zap"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Server implements the WalletService gRPC server
 type Server struct {
-	wallet.UnimplementedWalletServiceServer
-	service *service.Service
-	logger  *zap.Logger
+    wallet.UnimplementedWalletServiceServer
+    service *service.Service
+    logger  *zap.Logger
+    tm      *auth.TokenManager
 }
 
 // NewServer creates a new gRPC server instance
-func NewServer(service *service.Service, logger *zap.Logger) *Server {
-	return &Server{
-		service: service,
-		logger:  logger,
-	}
+func NewServer(service *service.Service, logger *zap.Logger, tm *auth.TokenManager) *Server {
+    return &Server{
+        service: service,
+        logger:  logger,
+        tm:      tm,
+    }
 }
 
 // User management methods
@@ -129,16 +133,43 @@ func (s *Server) UpdateUser(ctx context.Context, req *wallet.UpdateUserRequest) 
 	}, nil
 }
 
+func (s *Server) RequestNonce(ctx context.Context, req *wallet.RequestNonceRequest) (*wallet.RequestNonceResponse, error) {
+    if req.Wallet == "" {
+        return nil, status.Error(codes.InvalidArgument, "wallet is required")
+    }
+    nonce, err := s.service.RequestNonce(ctx, req.Wallet)
+    if err != nil {
+        s.logger.Error("request nonce failed", zap.Error(err), zap.String("wallet", req.Wallet))
+        return nil, status.Error(codes.Internal, "request nonce failed")
+    }
+    return &wallet.RequestNonceResponse{Nonce: nonce}, nil
+}
+
+func (s *Server) VerifySignature(ctx context.Context, req *wallet.VerifySignatureRequest) (*wallet.VerifySignatureResponse, error) {
+    if req.Wallet == "" || req.Signature == "" {
+        return nil, status.Error(codes.InvalidArgument, "wallet and signature are required")
+    }
+    token, err := s.service.VerifySignature(ctx, req.Wallet, req.Signature, func(wallet string) (string, error) {
+        return s.tm.Generate(wallet, 7*24*time.Hour)
+    })
+    if err != nil {
+        s.logger.Error("verify signature failed", zap.Error(err), zap.String("wallet", req.Wallet))
+        return nil, status.Error(codes.Unauthenticated, "verification failed")
+    }
+    return &wallet.VerifySignatureResponse{Token: token}, nil
+}
+
 // Helper functions to convert between models and protobuf types
 
 func convertUserToProto(userModel *models.User) *wallet.User {
-	return &wallet.User{
-		Id:            userModel.ID,
-		WalletAddress: userModel.WalletAddress,
-		Balance:       userModel.Balance,
-		Nonce:         userModel.Nonce,
-		Role:          string(userModel.Role),
-		CreatedAt:     timestamppb.New(userModel.CreatedAt),
-		UpdatedAt:     timestamppb.New(userModel.UpdatedAt),
-	}
+    return &wallet.User{
+        Id:            userModel.ID,
+        WalletAddress: userModel.WalletAddress,
+        Balance:       userModel.Balance,
+        Nonce:         userModel.Nonce,
+        Role:          string(userModel.Role),
+        CreatedAt:     timestamppb.New(userModel.CreatedAt),
+        UpdatedAt:     timestamppb.New(userModel.UpdatedAt),
+        LastLogin:     func() *timestamppb.Timestamp { if userModel.LastLogin != nil { return timestamppb.New(*userModel.LastLogin) } ; return nil }(),
+    }
 }

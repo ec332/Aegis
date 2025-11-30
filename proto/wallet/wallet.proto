@@ -22,6 +22,8 @@ service WalletService {
   rpc GetUserByWallet(GetUserByWalletRequest) returns (GetUserResponse);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc RequestNonce(RequestNonceRequest) returns (RequestNonceResponse);
+  rpc VerifySignature(VerifySignatureRequest) returns (VerifySignatureResponse);
 }
 
 message WalletAccount { string id = 1; string user_id = 2; string address = 3; string currency = 4; double total_balance = 5; double available_balance = 6; string status = 7; google.protobuf.Timestamp created_at = 8; google.protobuf.Timestamp updated_at = 9; }
@@ -59,6 +61,7 @@ message User {
   string role = 5;
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
+  google.protobuf.Timestamp last_login = 8;
 }
 
 message GetUserRequest { string id = 1; }
@@ -79,3 +82,8 @@ message UpdateUserRequest {
   string role = 4; 
 }
 message UpdateUserResponse { User user = 1; }
+
+message RequestNonceRequest { string wallet = 1; }
+message RequestNonceResponse { string nonce = 1; }
+message VerifySignatureRequest { string wallet = 1; string signature = 2; }
+message VerifySignatureResponse { string token = 1; }

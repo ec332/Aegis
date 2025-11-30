@@ -129,7 +129,7 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: aegis_settlement
+      DB_NAME: postgres
       DB_USER: postgres
       DB_PASSWORD: postgres
       GRPC_PORT: 50053
@@ -144,6 +144,8 @@ services:
       context: .
       dockerfile: wallet/Dockerfile
     environment:
+      WALLET_DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      WALLET_SERVICE_PORT: 50052
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: postgres

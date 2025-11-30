@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
     nonce TEXT NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'user',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_login TIMESTAMP NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address);

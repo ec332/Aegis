@@ -70,12 +70,12 @@ func (TransactionType) EnumDescriptor() ([]byte, []int) {
 
 type TransactionRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	MarketId        string                 `protobuf:"bytes,1,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"` // UUID
-	OptionId        string                 `protobuf:"bytes,2,opt,name=option_id,json=optionId,proto3" json:"option_id,omitempty"` // UUID
-	UserId          string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`       // UUID
+	MarketId        string                 `protobuf:"bytes,1,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"`
+	OptionId        string                 `protobuf:"bytes,2,opt,name=option_id,json=optionId,proto3" json:"option_id,omitempty"`
+	UserId          string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	TransactionType TransactionType        `protobuf:"varint,4,opt,name=transaction_type,json=transactionType,proto3,enum=transaction.TransactionType" json:"transaction_type,omitempty"`
 	NumberOfShares  int32                  `protobuf:"varint,5,opt,name=number_of_shares,json=numberOfShares,proto3" json:"number_of_shares,omitempty"`
-	PricePerShare   float64                `protobuf:"fixed64,6,opt,name=price_per_share,json=pricePerShare,proto3" json:"price_per_share,omitempty"` // 0.00–1.00
+	PricePerShare   float64                `protobuf:"fixed64,6,opt,name=price_per_share,json=pricePerShare,proto3" json:"price_per_share,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -153,17 +153,11 @@ func (x *TransactionRequest) GetPricePerShare() float64 {
 }
 
 type TransactionResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // UUID
-	MarketId        string                 `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"`
-	OptionId        string                 `protobuf:"bytes,3,opt,name=option_id,json=optionId,proto3" json:"option_id,omitempty"`
-	UserId          string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	TransactionType TransactionType        `protobuf:"varint,5,opt,name=transaction_type,json=transactionType,proto3,enum=transaction.TransactionType" json:"transaction_type,omitempty"`
-	NumberOfShares  int32                  `protobuf:"varint,6,opt,name=number_of_shares,json=numberOfShares,proto3" json:"number_of_shares,omitempty"`
-	PricePerShare   float64                `protobuf:"fixed64,7,opt,name=price_per_share,json=pricePerShare,proto3" json:"price_per_share,omitempty"`
-	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TransactionResponse) Reset() {
@@ -203,48 +197,6 @@ func (x *TransactionResponse) GetId() string {
 	return ""
 }
 
-func (x *TransactionResponse) GetMarketId() string {
-	if x != nil {
-		return x.MarketId
-	}
-	return ""
-}
-
-func (x *TransactionResponse) GetOptionId() string {
-	if x != nil {
-		return x.OptionId
-	}
-	return ""
-}
-
-func (x *TransactionResponse) GetUserId() string {
-	if x != nil {
-		return x.UserId
-	}
-	return ""
-}
-
-func (x *TransactionResponse) GetTransactionType() TransactionType {
-	if x != nil {
-		return x.TransactionType
-	}
-	return TransactionType_BUY
-}
-
-func (x *TransactionResponse) GetNumberOfShares() int32 {
-	if x != nil {
-		return x.NumberOfShares
-	}
-	return 0
-}
-
-func (x *TransactionResponse) GetPricePerShare() float64 {
-	if x != nil {
-		return x.PricePerShare
-	}
-	return 0
-}
-
 func (x *TransactionResponse) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
@@ -254,8 +206,8 @@ func (x *TransactionResponse) GetCreatedAt() *timestamppb.Timestamp {
 
 type GetTransactionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        *string                `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3,oneof" json:"user_id,omitempty"`       // UUID filter
-	MarketId      *string                `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3,oneof" json:"market_id,omitempty"` // UUID filter
+	UserId        *string                `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3,oneof" json:"user_id,omitempty"`
+	MarketId      *string                `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3,oneof" json:"market_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -306,7 +258,7 @@ func (x *GetTransactionsRequest) GetMarketId() string {
 
 type GetTransactionsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Transactions  []*TransactionResponse `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
+	Transactions  []*Transaction         `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -341,9 +293,109 @@ func (*GetTransactionsResponse) Descriptor() ([]byte, []int) {
 	return file_transaction_transaction_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *GetTransactionsResponse) GetTransactions() []*TransactionResponse {
+func (x *GetTransactionsResponse) GetTransactions() []*Transaction {
 	if x != nil {
 		return x.Transactions
+	}
+	return nil
+}
+
+type Transaction struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	MarketId        string                 `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3" json:"market_id,omitempty"`
+	OptionId        string                 `protobuf:"bytes,3,opt,name=option_id,json=optionId,proto3" json:"option_id,omitempty"`
+	UserId          string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	TransactionType TransactionType        `protobuf:"varint,5,opt,name=transaction_type,json=transactionType,proto3,enum=transaction.TransactionType" json:"transaction_type,omitempty"`
+	NumberOfShares  int32                  `protobuf:"varint,6,opt,name=number_of_shares,json=numberOfShares,proto3" json:"number_of_shares,omitempty"`
+	PricePerShare   float64                `protobuf:"fixed64,7,opt,name=price_per_share,json=pricePerShare,proto3" json:"price_per_share,omitempty"`
+	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *Transaction) Reset() {
+	*x = Transaction{}
+	mi := &file_transaction_transaction_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Transaction) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Transaction) ProtoMessage() {}
+
+func (x *Transaction) ProtoReflect() protoreflect.Message {
+	mi := &file_transaction_transaction_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Transaction.ProtoReflect.Descriptor instead.
+func (*Transaction) Descriptor() ([]byte, []int) {
+	return file_transaction_transaction_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Transaction) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Transaction) GetMarketId() string {
+	if x != nil {
+		return x.MarketId
+	}
+	return ""
+}
+
+func (x *Transaction) GetOptionId() string {
+	if x != nil {
+		return x.OptionId
+	}
+	return ""
+}
+
+func (x *Transaction) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *Transaction) GetTransactionType() TransactionType {
+	if x != nil {
+		return x.TransactionType
+	}
+	return TransactionType_BUY
+}
+
+func (x *Transaction) GetNumberOfShares() int32 {
+	if x != nil {
+		return x.NumberOfShares
+	}
+	return 0
+}
+
+func (x *Transaction) GetPricePerShare() float64 {
+	if x != nil {
+		return x.PricePerShare
+	}
+	return 0
+}
+
+func (x *Transaction) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
 	}
 	return nil
 }
@@ -359,8 +411,21 @@ const file_transaction_transaction_proto_rawDesc = "" +
 	"\auser_id\x18\x03 \x01(\tR\x06userId\x12G\n" +
 	"\x10transaction_type\x18\x04 \x01(\x0e2\x1c.transaction.TransactionTypeR\x0ftransactionType\x12(\n" +
 	"\x10number_of_shares\x18\x05 \x01(\x05R\x0enumberOfShares\x12&\n" +
-	"\x0fprice_per_share\x18\x06 \x01(\x01R\rpricePerShare\"\xce\x02\n" +
+	"\x0fprice_per_share\x18\x06 \x01(\x01R\rpricePerShare\"`\n" +
 	"\x13TransactionResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x129\n" +
+	"\n" +
+	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"r\n" +
+	"\x16GetTransactionsRequest\x12\x1c\n" +
+	"\auser_id\x18\x01 \x01(\tH\x00R\x06userId\x88\x01\x01\x12 \n" +
+	"\tmarket_id\x18\x02 \x01(\tH\x01R\bmarketId\x88\x01\x01B\n" +
+	"\n" +
+	"\b_user_idB\f\n" +
+	"\n" +
+	"_market_id\"W\n" +
+	"\x17GetTransactionsResponse\x12<\n" +
+	"\ftransactions\x18\x01 \x03(\v2\x18.transaction.TransactionR\ftransactions\"\xc6\x02\n" +
+	"\vTransaction\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tmarket_id\x18\x02 \x01(\tR\bmarketId\x12\x1b\n" +
 	"\toption_id\x18\x03 \x01(\tR\boptionId\x12\x17\n" +
@@ -369,16 +434,7 @@ const file_transaction_transaction_proto_rawDesc = "" +
 	"\x10number_of_shares\x18\x06 \x01(\x05R\x0enumberOfShares\x12&\n" +
 	"\x0fprice_per_share\x18\a \x01(\x01R\rpricePerShare\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"r\n" +
-	"\x16GetTransactionsRequest\x12\x1c\n" +
-	"\auser_id\x18\x01 \x01(\tH\x00R\x06userId\x88\x01\x01\x12 \n" +
-	"\tmarket_id\x18\x02 \x01(\tH\x01R\bmarketId\x88\x01\x01B\n" +
-	"\n" +
-	"\b_user_idB\f\n" +
-	"\n" +
-	"_market_id\"_\n" +
-	"\x17GetTransactionsResponse\x12D\n" +
-	"\ftransactions\x18\x01 \x03(\v2 .transaction.TransactionResponseR\ftransactions*$\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt*$\n" +
 	"\x0fTransactionType\x12\a\n" +
 	"\x03BUY\x10\x00\x12\b\n" +
 	"\x04SELL\x10\x012\xca\x01\n" +
@@ -399,29 +455,31 @@ func file_transaction_transaction_proto_rawDescGZIP() []byte {
 }
 
 var file_transaction_transaction_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_transaction_transaction_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_transaction_transaction_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_transaction_transaction_proto_goTypes = []any{
 	(TransactionType)(0),            // 0: transaction.TransactionType
 	(*TransactionRequest)(nil),      // 1: transaction.TransactionRequest
 	(*TransactionResponse)(nil),     // 2: transaction.TransactionResponse
 	(*GetTransactionsRequest)(nil),  // 3: transaction.GetTransactionsRequest
 	(*GetTransactionsResponse)(nil), // 4: transaction.GetTransactionsResponse
-	(*timestamppb.Timestamp)(nil),   // 5: google.protobuf.Timestamp
+	(*Transaction)(nil),             // 5: transaction.Transaction
+	(*timestamppb.Timestamp)(nil),   // 6: google.protobuf.Timestamp
 }
 var file_transaction_transaction_proto_depIdxs = []int32{
 	0, // 0: transaction.TransactionRequest.transaction_type:type_name -> transaction.TransactionType
-	0, // 1: transaction.TransactionResponse.transaction_type:type_name -> transaction.TransactionType
-	5, // 2: transaction.TransactionResponse.created_at:type_name -> google.protobuf.Timestamp
-	2, // 3: transaction.GetTransactionsResponse.transactions:type_name -> transaction.TransactionResponse
-	1, // 4: transaction.TransactionService.CreateTransaction:input_type -> transaction.TransactionRequest
-	3, // 5: transaction.TransactionService.GetTransactions:input_type -> transaction.GetTransactionsRequest
-	2, // 6: transaction.TransactionService.CreateTransaction:output_type -> transaction.TransactionResponse
-	4, // 7: transaction.TransactionService.GetTransactions:output_type -> transaction.GetTransactionsResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	6, // 1: transaction.TransactionResponse.created_at:type_name -> google.protobuf.Timestamp
+	5, // 2: transaction.GetTransactionsResponse.transactions:type_name -> transaction.Transaction
+	0, // 3: transaction.Transaction.transaction_type:type_name -> transaction.TransactionType
+	6, // 4: transaction.Transaction.created_at:type_name -> google.protobuf.Timestamp
+	1, // 5: transaction.TransactionService.CreateTransaction:input_type -> transaction.TransactionRequest
+	3, // 6: transaction.TransactionService.GetTransactions:input_type -> transaction.GetTransactionsRequest
+	2, // 7: transaction.TransactionService.CreateTransaction:output_type -> transaction.TransactionResponse
+	4, // 8: transaction.TransactionService.GetTransactions:output_type -> transaction.GetTransactionsResponse
+	7, // [7:9] is the sub-list for method output_type
+	5, // [5:7] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_transaction_transaction_proto_init() }
@@ -436,7 +494,7 @@ func file_transaction_transaction_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transaction_transaction_proto_rawDesc), len(file_transaction_transaction_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
