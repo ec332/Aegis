@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
 	"github.com/ec332/aegis/market/pkg/models"
 	_ "github.com/lib/pq"
 )
@@ -29,12 +30,12 @@ func (r *Repository) CreateMarket(ctx context.Context, market *models.Market, op
 
 	// Insert market
 	query := `
-		INSERT INTO markets (id, title, description, status, resolution_datetime, winning_option_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO markets (id, title, description, status, resolution_datetime, winning_option_id, liquidity_parameter, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err = tx.ExecContext(ctx, query,
 		market.ID, market.Title, market.Description, market.Status,
-		market.ResolutionDatetime, market.WinningOptionID,
+		market.ResolutionDatetime, market.WinningOptionID, market.LiquidityParameter,
 		market.CreatedAt, market.UpdatedAt,
 	)
 	if err != nil {
@@ -62,7 +63,7 @@ func (r *Repository) CreateMarket(ctx context.Context, market *models.Market, op
 	`
 	for _, pool := range pools {
 		_, err = tx.ExecContext(ctx, poolQuery,
-			pool.ID, pool.MarketID, pool.OptionID, pool.PoolValue, pool.UpdatedAt,
+			pool.ID, pool.MarketID, pool.OptionID, pool.ShareQuantity, pool.UpdatedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("insert liquidity pool: %w", err)
@@ -72,19 +73,18 @@ func (r *Repository) CreateMarket(ctx context.Context, market *models.Market, op
 	return tx.Commit()
 }
 
-
 // GetMarket retrieves a market by ID with its options and liquidity pools
 func (r *Repository) GetMarket(ctx context.Context, marketID string) (*models.Market, error) {
 	market := &models.Market{}
 	query := `
 		SELECT id, title, description, status, resolution_datetime, 
-		       winning_option_id, created_at, updated_at
+		       winning_option_id, liquidity_parameter, created_at, updated_at
 		FROM markets
 		WHERE id = $1
 	`
 	err := r.db.QueryRowContext(ctx, query, marketID).Scan(
 		&market.ID, &market.Title, &market.Description, &market.Status,
-		&market.ResolutionDatetime, &market.WinningOptionID,
+		&market.ResolutionDatetime, &market.WinningOptionID, &market.LiquidityParameter,
 		&market.CreatedAt, &market.UpdatedAt,
 	)
 	if err != nil {
@@ -115,7 +115,7 @@ func (r *Repository) GetMarket(ctx context.Context, marketID string) (*models.Ma
 func (r *Repository) ListMarkets(ctx context.Context, status *models.MarketStatus) ([]models.Market, error) {
 	query := `
 		SELECT id, title, description, status, resolution_datetime,
-		       winning_option_id, created_at, updated_at
+		       winning_option_id, liquidity_parameter, created_at, updated_at
 		FROM markets
 		WHERE 1=1
 	`
@@ -141,7 +141,7 @@ func (r *Repository) ListMarkets(ctx context.Context, status *models.MarketStatu
 		market := models.Market{}
 		err := rows.Scan(
 			&market.ID, &market.Title, &market.Description, &market.Status,
-			&market.ResolutionDatetime, &market.WinningOptionID,
+			&market.ResolutionDatetime, &market.WinningOptionID, &market.LiquidityParameter,
 			&market.CreatedAt, &market.UpdatedAt,
 		)
 		if err != nil {
@@ -355,7 +355,7 @@ func (r *Repository) GetLiquidityPoolsByMarketID(ctx context.Context, marketID s
 	for rows.Next() {
 		pool := models.LiquidityPool{}
 		err := rows.Scan(
-			&pool.ID, &pool.MarketID, &pool.OptionID, &pool.PoolValue, &pool.UpdatedAt,
+			&pool.ID, &pool.MarketID, &pool.OptionID, &pool.ShareQuantity, &pool.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan liquidity pool: %w", err)
@@ -399,6 +399,7 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 		status VARCHAR(50) NOT NULL DEFAULT 'draft',
 		resolution_datetime TIMESTAMP,
 		winning_option_id UUID,
+		liquidity_parameter DECIMAL(20, 8) NOT NULL DEFAULT 100.0,
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);

@@ -23,6 +23,7 @@ type Market struct {
 	Status             MarketStatus    `json:"status"`
 	ResolutionDatetime *time.Time      `json:"resolution_datetime,omitempty"`
 	WinningOptionID    *string         `json:"winning_option_id,omitempty"`
+	LiquidityParameter float64         `json:"liquidity_parameter"`
 	Options            []Option        `json:"options,omitempty"`
 	LiquidityPools     []LiquidityPool `json:"liquidity_pools,omitempty"`
 	CreatedAt          time.Time       `json:"created_at"`
@@ -39,11 +40,11 @@ type Option struct {
 
 // LiquidityPool tracks liquidity for each option in a market
 type LiquidityPool struct {
-	ID        string    `json:"id"`
-	MarketID  string    `json:"market_id"`
-	OptionID  string    `json:"option_id"`
-	PoolValue float64   `json:"pool_value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	MarketID      string    `json:"market_id"`
+	OptionID      string    `json:"option_id"`
+	ShareQuantity float64   `json:"share_quantity"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // CreateMarketRequest represents the payload for creating a new market
@@ -51,6 +52,7 @@ type CreateMarketRequest struct {
 	Title              string     `json:"title"`
 	Description        string     `json:"description"`
 	ResolutionDatetime *time.Time `json:"resolution_datetime,omitempty"`
+	LiquidityParameter float64    `json:"liquidity_parameter,omitempty"`
 	Options            []string   `json:"options"`
 }
 
@@ -95,7 +97,7 @@ type User struct {
 
 // CreateUserRequest represents the payload for creating a new user
 type CreateUserRequest struct {
-	WalletAddress string `json:"wallet_address"`
+	WalletAddress string  `json:"wallet_address"`
 	Balance       float64 `json:"balance"`
 }
 
@@ -110,4 +112,14 @@ type UpdateUserRequest struct {
 type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message,omitempty"`
+}
+
+// CostCalculationRequest represents the payload for calculating buy/sell costs
+type CostCalculationRequest struct {
+	Amount float64 `json:"amount"`
+}
+
+// CostCalculationResponse represents the response for cost calculation
+type CostCalculationResponse struct {
+	Cost float64 `json:"cost"`
 }

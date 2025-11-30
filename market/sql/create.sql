@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS markets (
     status VARCHAR(50) NOT NULL DEFAULT 'draft',
     resolution_datetime TIMESTAMP,
     winning_option_id UUID,
+    liquidity_parameter DECIMAL(20, 8) NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

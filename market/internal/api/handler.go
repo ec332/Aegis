@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
 	"github.com/ec332/aegis/market/internal/service"
 	"github.com/ec332/aegis/market/pkg/models"
 	"github.com/go-chi/chi/v5"
@@ -246,6 +247,77 @@ func StreamLiquidityUpdates(svc *service.Service) http.HandlerFunc {
 				flusher.Flush()
 			}
 		}
+	}
+}
+
+// GetMarketPrices handles GET /markets/:marketId/prices
+func GetMarketPrices(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		marketID := chi.URLParam(r, "marketId")
+		if marketID == "" {
+			respondError(w, http.StatusBadRequest, "Market ID is required", nil)
+			return
+		}
+
+		prices, err := svc.GetMarketPrices(r.Context(), marketID)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to get market prices", err)
+			return
+		}
+
+		respondJSON(w, http.StatusOK, prices)
+	}
+}
+
+// CalculateBuyCost handles POST /markets/:marketId/options/:optionId/cost/buy
+func CalculateBuyCost(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		marketID := chi.URLParam(r, "marketId")
+		optionID := chi.URLParam(r, "optionId")
+		if marketID == "" || optionID == "" {
+			respondError(w, http.StatusBadRequest, "Market ID and Option ID are required", nil)
+			return
+		}
+
+		var req models.CostCalculationRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid request body", err)
+			return
+		}
+
+		cost, err := svc.CalculateBuyCost(r.Context(), marketID, optionID, req.Amount)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Failed to calculate buy cost", err)
+			return
+		}
+
+		respondJSON(w, http.StatusOK, models.CostCalculationResponse{Cost: cost})
+	}
+}
+
+// CalculateSellCost handles POST /markets/:marketId/options/:optionId/cost/sell
+func CalculateSellCost(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		marketID := chi.URLParam(r, "marketId")
+		optionID := chi.URLParam(r, "optionId")
+		if marketID == "" || optionID == "" {
+			respondError(w, http.StatusBadRequest, "Market ID and Option ID are required", nil)
+			return
+		}
+
+		var req models.CostCalculationRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid request body", err)
+			return
+		}
+
+		cost, err := svc.CalculateSellCost(r.Context(), marketID, optionID, req.Amount)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Failed to calculate sell cost", err)
+			return
+		}
+
+		respondJSON(w, http.StatusOK, models.CostCalculationResponse{Cost: cost})
 	}
 }
 

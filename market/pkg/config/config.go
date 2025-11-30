@@ -3,11 +3,13 @@ package config
 import (
 	"fmt"
 	"os"
+
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	Port        string
+	HTTPPort    string
 	DatabaseURL string
 	RedisURL    string
 }
@@ -24,8 +26,11 @@ func Load() (*Config, error) {
 
 	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
 
+	httpPort := getEnv("HTTP_PORT", "8081")
+
 	return &Config{
 		Port:        port,
+		HTTPPort:    httpPort,
 		DatabaseURL: databaseURL,
 		RedisURL:    redisURL,
 	}, nil

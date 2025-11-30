@@ -63,11 +63,11 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
 	pools := make([]models.LiquidityPool, len(options))
 	for i, option := range options {
         pools[i] = models.LiquidityPool{
-            ID:        uuid.New().String(),
-            MarketID:  marketID,
-            OptionID:  option.ID,
-            PoolValue: 0,
-            UpdatedAt: now,
+            ID:            uuid.New().String(),
+            MarketID:      marketID,
+            OptionID:      option.ID,
+            ShareQuantity: 0,
+            UpdatedAt:     now,
         }
     }
 
@@ -221,7 +221,7 @@ func (s *Service) GetMarketPrices(ctx context.Context, marketID string) (map[str
 	// Let's map option ID to quantity.
 	quantityMap := make(map[string]float64)
     for _, pool := range market.LiquidityPools {
-        quantityMap[pool.OptionID] = pool.PoolValue
+        quantityMap[pool.OptionID] = pool.ShareQuantity
     }
 
 	// Create a slice of quantities corresponding to the market options order
@@ -253,7 +253,7 @@ func (s *Service) CalculateBuyCost(ctx context.Context, marketID, optionID strin
 
 	quantityMap := make(map[string]float64)
     for _, pool := range market.LiquidityPools {
-        quantityMap[pool.OptionID] = pool.PoolValue
+        quantityMap[pool.OptionID] = pool.ShareQuantity
     }
 
 	orderedQuantities := make([]float64, len(market.Options))
@@ -282,7 +282,7 @@ func (s *Service) CalculateSellCost(ctx context.Context, marketID, optionID stri
 
 	quantityMap := make(map[string]float64)
     for _, pool := range market.LiquidityPools {
-        quantityMap[pool.OptionID] = pool.PoolValue
+        quantityMap[pool.OptionID] = pool.ShareQuantity
     }
 
 	orderedQuantities := make([]float64, len(market.Options))
