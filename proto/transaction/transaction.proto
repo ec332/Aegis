@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package transaction;
+
+option go_package = "github.com/aegis/proto/transaction";
+
+import "google/protobuf/timestamp.proto";
+
+service TransactionService {
+  rpc CreateTransaction(TransactionRequest) returns (TransactionResponse);
+  rpc GetTransactions(GetTransactionsRequest) returns (GetTransactionsResponse);
+}
+
+enum TransactionType {
+  BUY = 0;
+  SELL = 1;
+}
+
+message TransactionRequest {
+  string market_id = 1;
+  string option_id = 2;
+  string user_id = 3;
+  TransactionType transaction_type = 4;
+  int32 number_of_shares = 5;
+  double price_per_share = 6;
+}
+
+message TransactionResponse {
+  string id = 1;
+  google.protobuf.Timestamp created_at = 2;
+}
+
+message GetTransactionsRequest {
+  optional string user_id = 1;
+  optional string market_id = 2;
+}
+
+message GetTransactionsResponse {
+  repeated Transaction transactions = 1;
+}
+
+message Transaction {
+  string id = 1;
+  string market_id = 2;
+  string option_id = 3;
+  string user_id = 4;
+  TransactionType transaction_type = 5;
+  int32 number_of_shares = 6;
+  double price_per_share = 7;
+  google.protobuf.Timestamp created_at = 8;
+}

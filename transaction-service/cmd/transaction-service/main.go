@@ -3,12 +3,9 @@ package main
 import (
     "context"
     "fmt"
-    "net/http"
+    "net"
     "os"
-    "time"
 
-    "github.com/go-chi/chi/v5"
-    "github.com/go-chi/chi/v5/middleware"
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/spf13/viper"
     "go.uber.org/zap"
@@ -16,14 +13,17 @@ import (
     "google.golang.org/grpc/credentials/insecure"
 
     "github.com/aegis/proto/gen/market"
-    httpHandlers "transaction-service/internal/http"
+    pb "github.com/aegis/proto/gen/transaction"
+    grpcServer "transaction-service/internal/grpc"
     "transaction-service/internal/log"
+    "transaction-service/internal/service"
+    "transaction-service/internal/store/postgres"
 )
 
 func main() {
     viper.SetEnvPrefix("APP")
     viper.AutomaticEnv()
-    viper.SetDefault("HTTP_PORT", 5555)
+    viper.SetDefault("GRPC_PORT", 50052)
     viper.SetDefault("DB_HOST", "localhost")
     viper.SetDefault("DB_PORT", 5432)
     viper.SetDefault("DB_NAME", "transaction")
@@ -64,27 +64,23 @@ func main() {
     marketClient := market.NewMarketServiceClient(marketConn)
     logger.Info("connected to market service", zap.String("addr", marketAddr))
 
-    r := chi.NewRouter()
-    r.Use(middleware.RequestID)
-    r.Use(middleware.RealIP)
-    r.Use(middleware.Logger)
-    r.Use(middleware.Recoverer)
-    r.Use(middleware.Timeout(60 * time.Second))
+    // Create transaction service
+    repo := postgres.New(pool)
+    svc := service.NewTransactionService(repo)
 
-    r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(http.StatusOK)
-        _, _ = w.Write([]byte("{\"status\":\"healthy\"}"))
-    })
+    // Create gRPC server
+    grpcPort := viper.GetInt("GRPC_PORT")
+    lis, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcPort))
+    if err != nil {
+        logger.Fatal("failed to listen", zap.Error(err))
+    }
 
-    handler := httpHandlers.NewWithMarketClient(pool, logger, marketClient)
-    handler.RegisterRoutes(r)
+    s := grpc.NewServer()
+    pb.RegisterTransactionServiceServer(s, grpcServer.NewTransactionGRPCServer(svc, logger, marketClient))
 
-    port := viper.GetInt("HTTP_PORT")
-    addr := fmt.Sprintf(":%d", port)
-    logger.Info("starting server", zap.String("addr", addr))
-    if err := http.ListenAndServe(addr, r); err != nil && err != http.ErrServerClosed {
-        logger.Fatal("server error", zap.Error(err))
+    logger.Info("starting gRPC server", zap.Int("port", grpcPort))
+    if err := s.Serve(lis); err != nil {
+        logger.Fatal("failed to serve", zap.Error(err))
     }
     _ = os.Stderr
 }

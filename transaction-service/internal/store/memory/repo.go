@@ -57,4 +57,26 @@ func (r *Repository) DeleteByID(ctx context.Context, id uuid.UUID) (int64, error
     return 1, nil
 }
 
+func (r *Repository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Transaction, error) {
+    r.mu.RLock(); defer r.mu.RUnlock()
+    out := make([]model.Transaction, 0)
+    for _, t := range r.data {
+        if t.UserID == userID {
+            out = append(out, t)
+        }
+    }
+    return out, nil
+}
+
+func (r *Repository) FindByMarketID(ctx context.Context, marketID uuid.UUID) ([]model.Transaction, error) {
+    r.mu.RLock(); defer r.mu.RUnlock()
+    out := make([]model.Transaction, 0)
+    for _, t := range r.data {
+        if t.MarketID == marketID {
+            out = append(out, t)
+        }
+    }
+    return out, nil
+}
+
 var _ store.Repository = (*Repository)(nil)

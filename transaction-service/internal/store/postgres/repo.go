@@ -129,4 +129,62 @@ func (r *Repository) DeleteByID(ctx context.Context, id uuid.UUID) (int64, error
     return ct.RowsAffected(), nil
 }
 
+func (r *Repository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Transaction, error) {
+    rows, err := r.pool.Query(ctx, `SELECT id, user_id, market_id, option_id, transaction_type, number_of_shares, price_per_share, created_at FROM transactions WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+    var out []model.Transaction
+    for rows.Next() {
+        var t model.Transaction
+        var id, userID, marketID, optionID uuid.UUID
+        var typ string
+        var shares, price decimal.Decimal
+        var created time.Time
+        if err := rows.Scan(&id, &userID, &marketID, &optionID, &typ, &shares, &price, &created); err != nil {
+            return nil, err
+        }
+        t.ID = id
+        t.UserID = userID
+        t.MarketID = marketID
+        t.OptionID = optionID
+        t.TransactionType = typ
+        t.NumberOfShares = shares
+        t.PricePerShare = price
+        t.CreatedAt = created
+        out = append(out, t)
+    }
+    return out, rows.Err()
+}
+
+func (r *Repository) FindByMarketID(ctx context.Context, marketID uuid.UUID) ([]model.Transaction, error) {
+    rows, err := r.pool.Query(ctx, `SELECT id, user_id, market_id, option_id, transaction_type, number_of_shares, price_per_share, created_at FROM transactions WHERE market_id=$1 ORDER BY created_at DESC`, marketID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+    var out []model.Transaction
+    for rows.Next() {
+        var t model.Transaction
+        var id, userID, marketID, optionID uuid.UUID
+        var typ string
+        var shares, price decimal.Decimal
+        var created time.Time
+        if err := rows.Scan(&id, &userID, &marketID, &optionID, &typ, &shares, &price, &created); err != nil {
+            return nil, err
+        }
+        t.ID = id
+        t.UserID = userID
+        t.MarketID = marketID
+        t.OptionID = optionID
+        t.TransactionType = typ
+        t.NumberOfShares = shares
+        t.PricePerShare = price
+        t.CreatedAt = created
+        out = append(out, t)
+    }
+    return out, rows.Err()
+}
+
 var _ store.Repository = (*Repository)(nil)

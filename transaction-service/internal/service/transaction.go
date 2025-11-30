@@ -58,6 +58,14 @@ func (s *TransactionService) DeleteByID(ctx context.Context, id uuid.UUID) (int6
     return s.repo.DeleteByID(ctx, id)
 }
 
+func (s *TransactionService) FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Transaction, error) {
+    return s.repo.FindByUserID(ctx, userID)
+}
+
+func (s *TransactionService) FindByMarketID(ctx context.Context, marketID uuid.UUID) ([]model.Transaction, error) {
+    return s.repo.FindByMarketID(ctx, marketID)
+}
+
 // helpers to parse decimals
 func MustDecimalFromString(s string) decimal.Decimal {
     d, _ := decimal.NewFromString(s)

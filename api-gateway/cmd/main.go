@@ -1,27 +1,28 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"strings"
-	"time"
+    "context"
+    "encoding/json"
+    "bytes"
+    "fmt"
+    "io"
+    "net/http"
+    "strings"
+    "time"
+    "os"
 
-	"github.com/go-chi/cors"
-	"github.com/gorilla/mux"
-	"go.uber.org/zap"
+    "github.com/gorilla/mux"
+    "go.uber.org/zap"
+    "github.com/go-chi/cors"
 
-	market "github.com/aegis/proto/gen/market"
-	settlement "github.com/aegis/proto/gen/settlement"
-	wallet "github.com/aegis/proto/gen/wallet"
-	resgrpc "github.com/aegis/shared/grpc"
-	"github.com/aegis/shared/kafka"
-	"github.com/aegis/shared/metrics"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    resgrpc "github.com/aegis/shared/grpc"
+    "github.com/aegis/shared/kafka"
+    "github.com/aegis/shared/metrics"
+    market "github.com/aegis/proto/gen/market"
+    wallet "github.com/aegis/proto/gen/wallet"
+    settlement "github.com/aegis/proto/gen/settlement"
+    transaction "github.com/aegis/proto/gen/transaction"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type KafkaPublisher interface {
@@ -29,58 +30,68 @@ type KafkaPublisher interface {
 }
 
 type APIGateway struct {
-	logger           *zap.Logger
-	metrics          *metrics.Registry
-	marketClient     *resgrpc.ResilientClient
-	walletClient     *resgrpc.ResilientClient
-	settlementClient *resgrpc.ResilientClient
-	kafkaProducer    KafkaPublisher
-	marketStub       market.MarketServiceClient
-	walletStub       wallet.WalletServiceClient
-	settlementStub   settlement.SettlementServiceClient
+    logger          *zap.Logger
+    metrics         *metrics.Registry
+    marketClient    *resgrpc.ResilientClient
+    walletClient    *resgrpc.ResilientClient
+    settlementClient *resgrpc.ResilientClient
+    transactionClient *resgrpc.ResilientClient
+    kafkaProducer   KafkaPublisher
+    marketStub      market.MarketServiceClient
+    walletStub      wallet.WalletServiceClient
+    settlementStub  settlement.SettlementServiceClient
+    transactionStub transaction.TransactionServiceClient
 }
 
 func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIGateway, error) {
-	marketConfig := resgrpc.DefaultClientConfig("market", "market-service:50051")
-	walletConfig := resgrpc.DefaultClientConfig("wallet", "wallet-service:50052")
-	settlementConfig := resgrpc.DefaultClientConfig("settlement", "settlement-service:50053")
+    marketConfig := resgrpc.DefaultClientConfig("market", "market-service:50051")
+    walletConfig := resgrpc.DefaultClientConfig("wallet", "wallet-service:50052")
+    settlementConfig := resgrpc.DefaultClientConfig("settlement", "settlement-service:50053")
+    transactionConfig := resgrpc.DefaultClientConfig("transaction", "transaction-service:50052")
 
-	marketClient, err := resgrpc.NewResilientClient(marketConfig, logger, metricsRegistry)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create market client: %w", err)
-	}
+    marketClient, err := resgrpc.NewResilientClient(marketConfig, logger, metricsRegistry)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create market client: %w", err)
+    }
 
-	walletClient, err := resgrpc.NewResilientClient(walletConfig, logger, metricsRegistry)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create wallet client: %w", err)
-	}
+    walletClient, err := resgrpc.NewResilientClient(walletConfig, logger, metricsRegistry)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create wallet client: %w", err)
+    }
 
-	settlementClient, err := resgrpc.NewResilientClient(settlementConfig, logger, metricsRegistry)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create settlement client: %w", err)
-	}
+    settlementClient, err := resgrpc.NewResilientClient(settlementConfig, logger, metricsRegistry)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create settlement client: %w", err)
+    }
 
-	brokersEnv := getEnv("KAFKA_BROKERS", "kafka:29092")
-	var brokers []string
-	for _, b := range strings.Split(brokersEnv, ",") {
-		b = strings.TrimSpace(b)
-		if b != "" {
-			brokers = append(brokers, b)
-		}
-	}
-	kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: brokers}, logger)
+    transactionClient, err := resgrpc.NewResilientClient(transactionConfig, logger, metricsRegistry)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create transaction client: %w", err)
+    }
 
-	return &APIGateway{
-		logger:           logger,
-		metrics:          metricsRegistry,
-		marketClient:     marketClient,
-		walletClient:     walletClient,
-		settlementClient: settlementClient,
-		kafkaProducer:    kafkaProducer,
-		marketStub:       market.NewMarketServiceClient(marketClient.GetConnection()),
-		walletStub:       wallet.NewWalletServiceClient(walletClient.GetConnection()),
-		settlementStub:   settlement.NewSettlementServiceClient(settlementClient.GetConnection()),
-	}, nil
+    brokersEnv := getEnv("KAFKA_BROKERS", "kafka:29092")
+    var brokers []string
+    for _, b := range strings.Split(brokersEnv, ",") {
+        b = strings.TrimSpace(b)
+        if b != "" {
+            brokers = append(brokers, b)
+        }
+    }
+    kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: brokers}, logger)
+
+    return &APIGateway{
+        logger:           logger,
+        metrics:          metricsRegistry,
+        marketClient:     marketClient,
+        walletClient:     walletClient,
+        settlementClient: settlementClient,
+        transactionClient: transactionClient,
+        kafkaProducer:    kafkaProducer,
+        marketStub:       market.NewMarketServiceClient(marketClient.GetConnection()),
+        walletStub:       wallet.NewWalletServiceClient(walletClient.GetConnection()),
+        settlementStub:   settlement.NewSettlementServiceClient(settlementClient.GetConnection()),
+        transactionStub:  transaction.NewTransactionServiceClient(transactionClient.GetConnection()),
+    }, nil
 }
 
 func (g *APIGateway) handleMarketRequest(w http.ResponseWriter, r *http.Request) {
@@ -450,10 +461,84 @@ func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter,
 	http.Error(w, err.Error(), status)
 }
 
-func (g *APIGateway) writeJSONResponse(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+func (g *APIGateway) handleTransactionRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	path := r.URL.Path
+	method := r.Method
+
+	switch {
+	case method == "POST" && strings.HasSuffix(path, "/transactions"):
+		g.createTransaction(ctx, w, r)
+	case method == "GET" && strings.Contains(path, "/transactions"):
+		g.getTransactions(ctx, w, r)
+	default:
+		http.Error(w, "Not found", http.StatusNotFound)
+	}
+}
+
+func (g *APIGateway) createTransaction(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		UserID          string  `json:"user_id"`
+		MarketID        string  `json:"market_id"`
+		OptionID        string  `json:"option_id"`
+		TransactionType string  `json:"transaction_type"`
+		NumberOfShares  int32   `json:"number_of_shares"`
+		PricePerShare   float64 `json:"price_per_share"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Convert transaction type string to enum
+	var txType transaction.TransactionType
+	switch body.TransactionType {
+	case "BUY":
+		txType = transaction.TransactionType_BUY
+	case "SELL":
+		txType = transaction.TransactionType_SELL
+	default:
+		http.Error(w, "Invalid transaction_type, must be BUY or SELL", http.StatusBadRequest)
+		return
+	}
+
+	req := &transaction.TransactionRequest{
+		UserId:          body.UserID,
+		MarketId:        body.MarketID,
+		OptionId:        body.OptionID,
+		TransactionType: txType,
+		NumberOfShares:  body.NumberOfShares,
+		PricePerShare:   body.PricePerShare,
+	}
+
+	resp, err := g.transactionStub.CreateTransaction(ctx, req)
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "transaction", "CreateTransaction")
+		return
+	}
+
+	g.writeJSONResponse(w, http.StatusCreated, resp)
+}
+
+func (g *APIGateway) getTransactions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	marketID := r.URL.Query().Get("market_id")
+
+	req := &transaction.GetTransactionsRequest{}
+	if userID != "" {
+		req.UserId = &userID
+	}
+	if marketID != "" {
+		req.MarketId = &marketID
+	}
+
+	resp, err := g.transactionStub.GetTransactions(ctx, req)
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "transaction", "GetTransactions")
+		return
+	}
+
+	g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 func extractIDFromPath(path, resource string) string {
@@ -464,6 +549,12 @@ func extractIDFromPath(path, resource string) string {
 		}
 	}
 	return ""
+}
+
+func (g *APIGateway) writeJSONResponse(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
 }
 
 func main() {
@@ -494,7 +585,10 @@ func main() {
 	router.HandleFunc("/api/settlements", gateway.handleSettlementRequest).Methods("POST")
 	router.HandleFunc("/api/settlements/{id}", gateway.handleSettlementRequest).Methods("GET")
 	router.HandleFunc("/api/settlements/{id}/complete", gateway.handleSettlementRequest).Methods("PUT")
-
+	
+	// Transaction routes
+	router.HandleFunc("/api/transactions", gateway.handleTransactionRequest).Methods("GET", "POST")
+	
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
