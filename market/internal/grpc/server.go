@@ -122,11 +122,9 @@ func (s *Server) UpdateMarket(ctx context.Context, req *market.UpdateMarketReque
 
 // ListMarkets retrieves markets
 func (s *Server) ListMarkets(ctx context.Context, req *market.ListMarketsRequest) (*market.ListMarketsResponse, error) {
-	var statusFilter *models.MarketStatus
-	if req.Status != "" {
-		status := models.MarketStatus(req.Status)
-		statusFilter = &status
-	}
+	// Always constrain listings to active markets regardless of caller filters
+	activeStatus := models.MarketStatusActive
+	statusFilter := &activeStatus
 
 	markets, err := s.service.ListMarkets(ctx, statusFilter)
 	if err != nil {
