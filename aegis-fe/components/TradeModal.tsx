@@ -55,6 +55,10 @@ export default function TradeModal({
     onClose();
   };
 
+  const marketTitle = market.question || (market as any).title || "Untitled Market";
+
+  const optionLabel = (option: Option) => option.option_text || (option as any).title || "Option";
+
   return (
     <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
@@ -76,12 +80,12 @@ export default function TradeModal({
           {/* Market Details */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-[#151b4d] mb-2">
-              {market.title}
+              {marketTitle}
             </h3>
             <p className="text-sm text-gray-600 mb-3">{market.description}</p>
-            <div className="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">
+            {/* <div className="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">
               {market.status}
-            </div>
+            </div> */}
           </div>
 
           {/* Options Selection */}
@@ -102,7 +106,14 @@ export default function TradeModal({
                       : "bg-gray-50 text-gray-700 border-gray-200 hover:border-[#151b4d]"
                   }`}
                 >
-                  {option.title}
+                  <div className="flex flex-col">
+                    <span>{optionLabel(option)}</span>
+                    {typeof option.current_price === "number" && (
+                      <span className="text-xs text-white/80">
+                        Price: ${option.current_price.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>

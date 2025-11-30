@@ -13,22 +13,31 @@ export default function MarketCard({
   options,
   onOptionClick,
 }: MarketCardProps) {
+  const marketTitle = market.question || (market as any).title || "Untitled Market";
+  const formatPrice = (price?: number) =>
+    typeof price === "number" ? `$${price.toFixed(2)}` : "–";
+  const badgeText = market.description || market.status;
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
       {/* Market Title (Center) */}
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-[#151b4d] mb-2">
-          {market.title}
+          {marketTitle}
         </h2>
         <p className="text-sm text-gray-600 mb-3">{market.description}</p>
-        <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">
-          {market.status}
-        </span>
+        {/* <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">
+          {badgeText}
+        </span> */}
       </div>
 
       {/* Options (Buttons) */}
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4 justify-center">
-        {options.map((option, index) => (
+        {options.map((option, index) => {
+          const label = option.option_text || (option as any).title || "Option";
+          const price = formatPrice(option.current_price);
+
+          return (
           <button
             key={option.id}
             onClick={() => onOptionClick?.(option)}
@@ -38,9 +47,13 @@ export default function MarketCard({
                 : "bg-[#8a704d] hover:bg-[#9d7e5a]"
             }`}
           >
-            {option.title}
+              <div className="flex flex-col">
+                <span className="text-lg font-semibold">{label}</span>
+                <span className="text-xs text-white/80">{price}</span>
+              </div>
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
