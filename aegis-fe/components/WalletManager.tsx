@@ -43,7 +43,8 @@ export default function WalletManager({ userId }: { userId: string }) {
     if (!withdrawAmount || !currentWallet) return;
     
     const amount = parseFloat(withdrawAmount);
-    if (amount > currentWallet.available_balance) {
+    const availableBalance = currentWallet.available_balance ?? 0;
+    if (amount > availableBalance) {
       alert('Insufficient funds');
       return;
     }
@@ -97,13 +98,13 @@ export default function WalletManager({ userId }: { userId: string }) {
               <div className="bg-blue-50 p-4 rounded-lg">
                 <p className="text-sm text-blue-600 font-medium">Total Balance</p>
                 <p className="text-2xl font-bold text-blue-900">
-                  ${currentWallet.total_balance.toFixed(2)}
+                  ${(currentWallet.total_balance ?? 0).toFixed(2)}
                 </p>
               </div>
               <div className="bg-green-50 p-4 rounded-lg">
                 <p className="text-sm text-green-600 font-medium">Available</p>
                 <p className="text-2xl font-bold text-green-900">
-                  ${currentWallet.available_balance.toFixed(2)}
+                  ${(currentWallet.available_balance ?? 0).toFixed(2)}
                 </p>
               </div>
             </div>
@@ -177,7 +178,7 @@ export default function WalletManager({ userId }: { userId: string }) {
                   type="number"
                   step="0.01"
                   min="0"
-                  max={currentWallet.available_balance}
+                  max={currentWallet.available_balance ?? 0}
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
