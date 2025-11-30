@@ -59,6 +59,9 @@ services:
       WALLET_SERVICE_GRPC_ADDR: wallet-service:50052
       SETTLEMENT_SERVICE_GRPC_ADDR: settlement-service:50053
       KAFKA_BROKERS: kafka:29092
+      CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
+      CORS_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
+      CORS_HEADERS: "Accept,Content-Type,Authorization"
     depends_on:
       - market-service
       - wallet-service
