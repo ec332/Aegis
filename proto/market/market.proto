@@ -6,22 +6,18 @@ option go_package = "github.com/aegis/proto/market";
 
 import "google/protobuf/timestamp.proto";
 
-// Market Service
 service MarketService {
   rpc GetMarket(GetMarketRequest) returns (GetMarketResponse);
   rpc CreateMarket(CreateMarketRequest) returns (CreateMarketResponse);
   rpc UpdateMarket(UpdateMarketRequest) returns (UpdateMarketResponse);
   rpc ListMarkets(ListMarketsRequest) returns (ListMarketsResponse);
   rpc GetMarketOptions(GetMarketOptionsRequest) returns (GetMarketOptionsResponse);
-  
-  // User management
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
   rpc GetUserByWallet(GetUserByWalletRequest) returns (GetUserResponse);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
 }
 
-// Market messages
 message Market {
   string id = 1;
   string question = 2;
@@ -45,25 +41,16 @@ message Option {
   google.protobuf.Timestamp updated_at = 7;
 }
 
-// Market requests/responses
-message GetMarketRequest {
-  string id = 1;
-}
-
-message GetMarketResponse {
-  Market market = 1;
-}
+message GetMarketRequest { string id = 1; }
+message GetMarketResponse { Market market = 1; }
 
 message CreateMarketRequest {
   string question = 1;
   string description = 2;
-  string category = 3;
-  google.protobuf.Timestamp end_time = 4;
+  google.protobuf.Timestamp end_time = 3;
+  repeated string options = 4;
 }
-
-message CreateMarketResponse {
-  Market market = 1;
-}
+message CreateMarketResponse { Market market = 1; }
 
 message UpdateMarketRequest {
   string id = 1;
@@ -74,31 +61,14 @@ message UpdateMarketRequest {
   string status = 6;
   string outcome = 7;
 }
+message UpdateMarketResponse { Market market = 1; }
 
-message UpdateMarketResponse {
-  Market market = 1;
-}
+message ListMarketsRequest { int32 limit = 1; int32 offset = 2; string status = 3; }
+message ListMarketsResponse { repeated Market markets = 1; int32 total = 2; }
 
-message ListMarketsRequest {
-  int32 limit = 1;
-  int32 offset = 2;
-  string status = 3;
-}
+message GetMarketOptionsRequest { string market_id = 1; }
+message GetMarketOptionsResponse { repeated Option options = 1; }
 
-message ListMarketsResponse {
-  repeated Market markets = 1;
-  int32 total = 2;
-}
-
-message GetMarketOptionsRequest {
-  string market_id = 1;
-}
-
-message GetMarketOptionsResponse {
-  repeated Option options = 1;
-}
-
-// User messages
 message User {
   string id = 1;
   string wallet_address = 2;
@@ -109,36 +79,12 @@ message User {
   google.protobuf.Timestamp updated_at = 7;
 }
 
-// User requests/responses
-message GetUserRequest {
-  string id = 1;
-}
+message GetUserRequest { string id = 1; }
+message GetUserByWalletRequest { string wallet_address = 1; }
+message GetUserResponse { User user = 1; }
 
-message GetUserByWalletRequest {
-  string wallet_address = 1;
-}
+message CreateUserRequest { string wallet_address = 1; double balance = 2; string role = 3; }
+message CreateUserResponse { User user = 1; }
 
-message GetUserResponse {
-  User user = 1;
-}
-
-message CreateUserRequest {
-  string wallet_address = 1;
-  double balance = 2;
-  string role = 3;
-}
-
-message CreateUserResponse {
-  User user = 1;
-}
-
-message UpdateUserRequest {
-  string id = 1;
-  string wallet_address = 2;
-  double balance = 3;
-  string role = 4;
-}
-
-message UpdateUserResponse {
-  User user = 1;
-}
+message UpdateUserRequest { string id = 1; string wallet_address = 2; double balance = 3; string role = 4; }
+message UpdateUserResponse { User user = 1; }

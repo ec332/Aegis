@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	market "github.com/aegis/proto/gen/market"
+    market "github.com/aegis/proto/gen/market"
 	grpcserver "github.com/aegis/shared/grpc"
 	"github.com/aegis/shared/metrics"
 	"github.com/aegis/shared/utils"
@@ -32,20 +32,20 @@ import (
 )
 
 func main() {
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
-	log.Println("Configuration loaded")
-
-	// Initialize logger
+	// Initialize logger first
 	logger, err := utils.NewLogger("market-service")
 	if err != nil {
 		log.Fatalf("Failed to create logger: %v", err)
 	}
 	defer logger.Sync()
 	logger.Info("Logger initialized")
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Fatal("Failed to load config", zap.Error(err))
+	}
+	logger.Info("Configuration loaded")
 
 	// Initialize database
 	db, err := sql.Open("postgres", cfg.DatabaseURL)
@@ -83,7 +83,7 @@ func main() {
 	logger.Info("Redis connected")
 
 	// Initialize service
-	svc := service.New(repo, redisClient)
+	svc := service.New(repo, redisClient, logger)
 	logger.Info("Service initialized")
 
 	// Create metrics registry

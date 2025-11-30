@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/aegis/shared/metrics"
-	market "github.com/aegis/proto/gen/market"
+    market "github.com/aegis/proto/gen/market"
 	wallet "github.com/aegis/proto/gen/wallet"
 	settlement "github.com/aegis/proto/gen/settlement"
 )
