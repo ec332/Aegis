@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
+import { useAuthStore } from '@/store/authStore';
 import { WalletAccount, WalletTransaction } from '@/types';
 
 export default function WalletManager({ userId }: { userId: string }) {
@@ -14,16 +15,20 @@ export default function WalletManager({ userId }: { userId: string }) {
     depositFunds, 
     withdrawFunds 
   } = useAppStore();
+  const { isAuthenticated, token } = useAuthStore();
   
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    if (!isAuthenticated || !token) {
+      return;
+    }
     if (userId && !currentWallet) {
       loadCurrentUserWallet(userId);
     }
-  }, [userId, currentWallet, loadCurrentUserWallet]);
+  }, [isAuthenticated, token, userId, currentWallet, loadCurrentUserWallet]);
 
   const handleDeposit = async () => {
     if (!depositAmount || !currentWallet) return;
@@ -126,7 +131,13 @@ export default function WalletManager({ userId }: { userId: string }) {
           <div className="text-center py-8">
             <p className="text-gray-500 mb-4">No wallet found</p>
             <button
-              onClick={() => loadCurrentUserWallet(userId)}
+              onClick={() => {
+                if (!isAuthenticated || !token) {
+                  alert('Please sign in first');
+                  return;
+                }
+                loadCurrentUserWallet(userId);
+              }}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
             >
               Create Wallet

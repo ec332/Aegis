@@ -19,10 +19,10 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
-	"github.com/aegis/shared/metrics"
-    market "github.com/aegis/proto/gen/market"
-	wallet "github.com/aegis/proto/gen/wallet"
+	market "github.com/aegis/proto/gen/market"
 	settlement "github.com/aegis/proto/gen/settlement"
+	wallet "github.com/aegis/proto/gen/wallet"
+	"github.com/aegis/shared/metrics"
 )
 
 // Mock Kafka producer
@@ -259,12 +259,12 @@ func setupTestGateway(t *testing.T) (*APIGateway, *mockMarketService, *mockWalle
 	kafkaMock := &mockKafkaProducer{}
 
 	gateway := &APIGateway{
-		logger:           logger,
-		metrics:          metricsRegistry,
-		marketStub:       marketMock,
-		walletStub:       walletMock,
-		settlementStub:   settlementMock,
-		kafkaProducer:    kafkaMock,
+		logger:         logger,
+		metrics:        metricsRegistry,
+		marketStub:     marketMock,
+		walletStub:     walletMock,
+		settlementStub: settlementMock,
+		kafkaProducer:  kafkaMock,
 	}
 
 	return gateway, marketMock, walletMock, settlementMock, kafkaMock
@@ -295,67 +295,67 @@ func createTestRequest(method, path string, body interface{}) (*http.Request, er
 // CORS Tests
 func TestCORSConfiguration(t *testing.T) {
 	tests := []struct {
-		name               string
-		envOrigins         string
-		envMethods         string
-		envHeaders         string
-		requestOrigin      string
-		requestMethod      string
-		requestHeaders     string
-		expectedStatus     int
-		expectedAllowOrigin string
+		name                 string
+		envOrigins           string
+		envMethods           string
+		envHeaders           string
+		requestOrigin        string
+		requestMethod        string
+		requestHeaders       string
+		expectedStatus       int
+		expectedAllowOrigin  string
 		expectedAllowMethods string
 		expectedAllowHeaders string
 	}{
 		{
-			name:               "Default CORS configuration",
-			envOrigins:         "",
-			envMethods:         "",
-			envHeaders:         "",
-			requestOrigin:      "http://localhost:3000",
-			requestMethod:      "GET",
-			requestHeaders:     "Content-Type",
-			expectedStatus:     http.StatusOK,
-			expectedAllowOrigin: "http://localhost:3000",
+			name:                 "Default CORS configuration",
+			envOrigins:           "",
+			envMethods:           "",
+			envHeaders:           "",
+			requestOrigin:        "http://localhost:3000",
+			requestMethod:        "GET",
+			requestHeaders:       "Content-Type",
+			expectedStatus:       http.StatusOK,
+			expectedAllowOrigin:  "http://localhost:3000",
 			expectedAllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 			expectedAllowHeaders: "Accept, Content-Type, Authorization",
 		},
 		{
-			name:               "Custom origins allowed",
-			envOrigins:         "https://example.com,https://app.example.com",
-			envMethods:         "GET,POST",
-			envHeaders:         "Authorization,X-Custom-Header",
-			requestOrigin:      "https://example.com",
-			requestMethod:      "POST",
-			requestHeaders:     "Authorization",
-			expectedStatus:     http.StatusOK,
-			expectedAllowOrigin: "https://example.com",
+			name:                 "Custom origins allowed",
+			envOrigins:           "https://example.com,https://app.example.com",
+			envMethods:           "GET,POST",
+			envHeaders:           "Authorization,X-Custom-Header",
+			requestOrigin:        "https://example.com",
+			requestMethod:        "POST",
+			requestHeaders:       "Authorization",
+			expectedStatus:       http.StatusOK,
+			expectedAllowOrigin:  "https://example.com",
 			expectedAllowMethods: "GET, POST",
 			expectedAllowHeaders: "Authorization, X-Custom-Header",
 		},
 		{
-			name:               "Origin not allowed",
-			envOrigins:         "https://example.com",
-			envMethods:         "GET,POST",
-			envHeaders:         "Content-Type",
-			requestOrigin:      "https://malicious.com",
-			requestMethod:      "GET",
-			requestHeaders:     "Content-Type",
-			expectedStatus:     http.StatusOK, // CORS middleware allows but doesn't set headers
-			expectedAllowOrigin: "",
+			name:                 "Origin not allowed",
+			envOrigins:           "https://example.com",
+			envMethods:           "GET,POST",
+			envHeaders:           "Content-Type",
+			requestOrigin:        "https://malicious.com",
+			requestMethod:        "GET",
+			requestHeaders:       "Content-Type",
+			expectedStatus:       http.StatusOK, // CORS middleware allows but doesn't set headers
+			expectedAllowOrigin:  "",
 			expectedAllowMethods: "",
 			expectedAllowHeaders: "",
 		},
 		{
-			name:               "Preflight OPTIONS request",
-			envOrigins:         "http://localhost:3000",
-			envMethods:         "GET,POST,PUT,DELETE",
-			envHeaders:         "Content-Type,Authorization",
-			requestOrigin:      "http://localhost:3000",
-			requestMethod:      "OPTIONS",
-			requestHeaders:     "Content-Type,Authorization",
-			expectedStatus:     http.StatusOK,
-			expectedAllowOrigin: "http://localhost:3000",
+			name:                 "Preflight OPTIONS request",
+			envOrigins:           "http://localhost:3000",
+			envMethods:           "GET,POST,PUT,DELETE",
+			envHeaders:           "Content-Type,Authorization",
+			requestOrigin:        "http://localhost:3000",
+			requestMethod:        "OPTIONS",
+			requestHeaders:       "Content-Type,Authorization",
+			expectedStatus:       http.StatusOK,
+			expectedAllowOrigin:  "http://localhost:3000",
 			expectedAllowMethods: "GET, POST, PUT, DELETE",
 			expectedAllowHeaders: "Content-Type, Authorization",
 		},
@@ -425,7 +425,7 @@ func TestCORSConfiguration(t *testing.T) {
 			// Simple CORS implementation for testing
 			corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				origin := r.Header.Get("Origin")
-				
+
 				// Check if origin is allowed
 				originAllowed := false
 				for _, allowedOrigin := range origins {
@@ -632,7 +632,7 @@ func TestMarketEndpoints(t *testing.T) {
 			// Reset mock expectations to avoid interference between tests
 			marketMock.ExpectedCalls = nil
 			marketMock.Calls = nil
-			
+
 			tt.setupMock()
 
 			req, err := createTestRequest(tt.method, tt.path, tt.body)
@@ -670,7 +670,7 @@ func TestWalletEndpoints(t *testing.T) {
 			method: "POST",
 			path:   "/api/wallets",
 			body: map[string]interface{}{
-				"user_id":          "user-123",
+				"user_id":         "user-123",
 				"currency":        "USD",
 				"initial_balance": 1000.0,
 			},
@@ -678,10 +678,10 @@ func TestWalletEndpoints(t *testing.T) {
 				walletMock.On("CreateWalletAccount", mock.Anything, mock.Anything).Return(
 					&wallet.CreateWalletAccountResponse{
 						Account: &wallet.WalletAccount{
-							Id:             "wallet-123",
-							UserId:         "user-123",
-							Currency:       "USD",
-							TotalBalance:   1000.0,
+							Id:               "wallet-123",
+							UserId:           "user-123",
+							Currency:         "USD",
+							TotalBalance:     1000.0,
 							AvailableBalance: 1000.0,
 						},
 					}, nil)
@@ -696,10 +696,10 @@ func TestWalletEndpoints(t *testing.T) {
 				walletMock.On("GetWalletAccount", mock.Anything, mock.Anything).Return(
 					&wallet.GetWalletAccountResponse{
 						Account: &wallet.WalletAccount{
-							Id:             "wallet-123",
-							UserId:         "user-123",
-							Currency:       "USD",
-							TotalBalance:   1000.0,
+							Id:               "wallet-123",
+							UserId:           "user-123",
+							Currency:         "USD",
+							TotalBalance:     1000.0,
 							AvailableBalance: 1000.0,
 						},
 					}, nil)
@@ -753,7 +753,7 @@ func TestWalletEndpoints(t *testing.T) {
 			// Reset mock expectations to avoid interference between tests
 			walletMock.ExpectedCalls = nil
 			walletMock.Calls = nil
-			
+
 			tt.setupMock()
 
 			req, err := createTestRequest(tt.method, tt.path, tt.body)
@@ -850,7 +850,7 @@ func TestSettlementEndpoints(t *testing.T) {
 			// Reset mock expectations to avoid interference between tests
 			settlementMock.ExpectedCalls = nil
 			settlementMock.Calls = nil
-			
+
 			tt.setupMock()
 
 			req, err := createTestRequest(tt.method, tt.path, tt.body)
@@ -1023,32 +1023,32 @@ func TestWriteJSONResponse(t *testing.T) {
 
 func TestEnvironmentVariableHandling(t *testing.T) {
 	tests := []struct {
-		name     string
-		envKey   string
-		envValue string
+		name       string
+		envKey     string
+		envValue   string
 		defaultVal string
-		expected string
+		expected   string
 	}{
 		{
-			name:     "Environment variable set",
-			envKey:   "TEST_VAR",
-			envValue: "test-value",
-			defaultVal:  "default-value",
-			expected: "test-value",
+			name:       "Environment variable set",
+			envKey:     "TEST_VAR",
+			envValue:   "test-value",
+			defaultVal: "default-value",
+			expected:   "test-value",
 		},
 		{
-			name:     "Environment variable not set",
-			envKey:   "NON_EXISTENT_VAR",
-			envValue: "",
-			defaultVal:  "default-value",
-			expected: "default-value",
+			name:       "Environment variable not set",
+			envKey:     "NON_EXISTENT_VAR",
+			envValue:   "",
+			defaultVal: "default-value",
+			expected:   "default-value",
 		},
 		{
-			name:     "Environment variable empty",
-			envKey:   "EMPTY_VAR",
-			envValue: "   ", // whitespace only
-			defaultVal:  "default-value",
-			expected: "default-value",
+			name:       "Environment variable empty",
+			envKey:     "EMPTY_VAR",
+			envValue:   "   ", // whitespace only
+			defaultVal: "default-value",
+			expected:   "default-value",
 		},
 	}
 

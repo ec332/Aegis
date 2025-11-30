@@ -4,9 +4,9 @@ import (
     "context"
     "time"
 
+    "aegis/wallet/internal/auth"
     "aegis/wallet/internal/service"
     "aegis/wallet/pkg/models"
-    "aegis/wallet/internal/auth"
 
     wallet "github.com/aegis/proto/gen/wallet"
     "go.uber.org/zap"
@@ -17,19 +17,19 @@ import (
 
 // Server implements the WalletService gRPC server
 type Server struct {
-    wallet.UnimplementedWalletServiceServer
-    service *service.Service
-    logger  *zap.Logger
-    tm      *auth.TokenManager
+	wallet.UnimplementedWalletServiceServer
+	service *service.Service
+	logger  *zap.Logger
+	tm      *auth.TokenManager
 }
 
 // NewServer creates a new gRPC server instance
 func NewServer(service *service.Service, logger *zap.Logger, tm *auth.TokenManager) *Server {
-    return &Server{
-        service: service,
-        logger:  logger,
-        tm:      tm,
-    }
+	return &Server{
+		service: service,
+		logger:  logger,
+		tm:      tm,
+	}
 }
 
 // User management methods
@@ -134,42 +134,140 @@ func (s *Server) UpdateUser(ctx context.Context, req *wallet.UpdateUserRequest) 
 }
 
 func (s *Server) RequestNonce(ctx context.Context, req *wallet.RequestNonceRequest) (*wallet.RequestNonceResponse, error) {
-    if req.Wallet == "" {
-        return nil, status.Error(codes.InvalidArgument, "wallet is required")
-    }
-    nonce, err := s.service.RequestNonce(ctx, req.Wallet)
-    if err != nil {
-        s.logger.Error("request nonce failed", zap.Error(err), zap.String("wallet", req.Wallet))
-        return nil, status.Error(codes.Internal, "request nonce failed")
-    }
-    return &wallet.RequestNonceResponse{Nonce: nonce}, nil
+	if req.Wallet == "" {
+		return nil, status.Error(codes.InvalidArgument, "wallet is required")
+	}
+	nonce, err := s.service.RequestNonce(ctx, req.Wallet)
+	if err != nil {
+		s.logger.Error("request nonce failed", zap.Error(err), zap.String("wallet", req.Wallet))
+		return nil, status.Error(codes.Internal, "request nonce failed")
+	}
+	return &wallet.RequestNonceResponse{Nonce: nonce}, nil
 }
 
 func (s *Server) VerifySignature(ctx context.Context, req *wallet.VerifySignatureRequest) (*wallet.VerifySignatureResponse, error) {
-    if req.Wallet == "" || req.Signature == "" {
-        return nil, status.Error(codes.InvalidArgument, "wallet and signature are required")
-    }
-    token, err := s.service.VerifySignature(ctx, req.Wallet, req.Signature, func(wallet string) (string, error) {
-        return s.tm.Generate(wallet, 7*24*time.Hour)
-    })
-    if err != nil {
-        s.logger.Error("verify signature failed", zap.Error(err), zap.String("wallet", req.Wallet))
-        return nil, status.Error(codes.Unauthenticated, "verification failed")
-    }
-    return &wallet.VerifySignatureResponse{Token: token}, nil
+	if req.Wallet == "" || req.Signature == "" {
+		return nil, status.Error(codes.InvalidArgument, "wallet and signature are required")
+	}
+	token, err := s.service.VerifySignature(ctx, req.Wallet, req.Signature, func(wallet string) (string, error) {
+		return s.tm.Generate(wallet, 7*24*time.Hour)
+	})
+	if err != nil {
+		s.logger.Error("verify signature failed", zap.Error(err), zap.String("wallet", req.Wallet))
+		return nil, status.Error(codes.Unauthenticated, "verification failed")
+	}
+	return &wallet.VerifySignatureResponse{Token: token}, nil
 }
 
 // Helper functions to convert between models and protobuf types
 
 func convertUserToProto(userModel *models.User) *wallet.User {
-    return &wallet.User{
-        Id:            userModel.ID,
-        WalletAddress: userModel.WalletAddress,
-        Balance:       userModel.Balance,
-        Nonce:         userModel.Nonce,
-        Role:          string(userModel.Role),
-        CreatedAt:     timestamppb.New(userModel.CreatedAt),
-        UpdatedAt:     timestamppb.New(userModel.UpdatedAt),
-        LastLogin:     func() *timestamppb.Timestamp { if userModel.LastLogin != nil { return timestamppb.New(*userModel.LastLogin) } ; return nil }(),
+	return &wallet.User{
+		Id:            userModel.ID,
+		WalletAddress: userModel.WalletAddress,
+		Balance:       userModel.Balance,
+		Nonce:         userModel.Nonce,
+		Role:          string(userModel.Role),
+		CreatedAt:     timestamppb.New(userModel.CreatedAt),
+		UpdatedAt:     timestamppb.New(userModel.UpdatedAt),
+		LastLogin: func() *timestamppb.Timestamp {
+			if userModel.LastLogin != nil {
+				return timestamppb.New(*userModel.LastLogin)
+			}
+			return nil
+		}(),
+	}
+}
+
+func (s *Server) CreateWalletAccount(ctx context.Context, req *wallet.CreateWalletAccountRequest) (*wallet.CreateWalletAccountResponse, error) {
+    if req.UserId == "" || req.Currency == "" {
+        return nil, status.Error(codes.InvalidArgument, "user_id and currency are required")
     }
+    acc, err := s.service.CreateWalletAccount(ctx, req.UserId, req.Currency)
+    if err != nil {
+        s.logger.Error("create wallet account failed", zap.Error(err))
+        return nil, status.Error(codes.Internal, "create wallet account failed")
+    }
+    return &wallet.CreateWalletAccountResponse{Account: &wallet.WalletAccount{
+        Id:               acc.ID,
+        UserId:           acc.UserID,
+        Currency:         acc.Currency,
+        TotalBalance:     acc.Balance,
+        AvailableBalance: acc.Balance,
+        Status:           acc.Status,
+        CreatedAt:        timestamppb.New(acc.CreatedAt),
+        UpdatedAt:        timestamppb.New(acc.UpdatedAt),
+    }}, nil
+}
+
+func (s *Server) GetWalletAccount(ctx context.Context, req *wallet.GetWalletAccountRequest) (*wallet.GetWalletAccountResponse, error) {
+    if req.Id == "" {
+        return nil, status.Error(codes.InvalidArgument, "id is required")
+    }
+    acc, err := s.service.GetWalletAccount(ctx, req.Id)
+    if err != nil {
+        s.logger.Error("get wallet account failed", zap.Error(err))
+        if status.Code(err) == codes.NotFound {
+            return nil, status.Error(codes.NotFound, "not found")
+        }
+        return nil, status.Error(codes.Internal, "get wallet account failed")
+    }
+    return &wallet.GetWalletAccountResponse{Account: &wallet.WalletAccount{
+        Id:               acc.ID,
+        UserId:           acc.UserID,
+        Currency:         acc.Currency,
+        TotalBalance:     acc.Balance,
+        AvailableBalance: acc.Balance,
+        Status:           acc.Status,
+        CreatedAt:        timestamppb.New(acc.CreatedAt),
+        UpdatedAt:        timestamppb.New(acc.UpdatedAt),
+    }}, nil
+}
+
+func (s *Server) Deposit(ctx context.Context, req *wallet.DepositRequest) (*wallet.DepositResponse, error) {
+    if req.AccountId == "" || req.Amount <= 0 {
+        return nil, status.Error(codes.InvalidArgument, "account_id and positive amount are required")
+    }
+    tx, err := s.service.UpdateWalletBalance(ctx, req.AccountId, req.Amount, "deposit", req.ReferenceId)
+    if err != nil {
+        s.logger.Error("deposit failed", zap.Error(err))
+        if err.Error() == "insufficient funds" {
+            return nil, status.Error(codes.FailedPrecondition, "insufficient funds")
+        }
+        return nil, status.Error(codes.Internal, "deposit failed")
+    }
+    return &wallet.DepositResponse{Transaction: &wallet.WalletTransaction{
+        Id:          tx.ID,
+        WalletId:    tx.WalletID,
+        Type:        tx.Type,
+        Amount:      tx.Amount,
+        Status:      tx.Status,
+        ReferenceId: tx.Description,
+        CreatedAt:   timestamppb.New(tx.CreatedAt),
+        UpdatedAt:   timestamppb.New(tx.UpdatedAt),
+    }}, nil
+}
+
+func (s *Server) Withdrawal(ctx context.Context, req *wallet.WithdrawalRequest) (*wallet.WithdrawalResponse, error) {
+    if req.AccountId == "" || req.Amount <= 0 {
+        return nil, status.Error(codes.InvalidArgument, "account_id and positive amount are required")
+    }
+    tx, err := s.service.UpdateWalletBalance(ctx, req.AccountId, -req.Amount, "withdrawal", req.ReferenceId)
+    if err != nil {
+        s.logger.Error("withdrawal failed", zap.Error(err))
+        if err.Error() == "insufficient funds" {
+            return nil, status.Error(codes.FailedPrecondition, "insufficient funds")
+        }
+        return nil, status.Error(codes.Internal, "withdrawal failed")
+    }
+    return &wallet.WithdrawalResponse{Transaction: &wallet.WalletTransaction{
+        Id:          tx.ID,
+        WalletId:    tx.WalletID,
+        Type:        tx.Type,
+        Amount:      req.Amount,
+        Status:      tx.Status,
+        ReferenceId: tx.Description,
+        CreatedAt:   timestamppb.New(tx.CreatedAt),
+        UpdatedAt:   timestamppb.New(tx.UpdatedAt),
+    }}, nil
 }

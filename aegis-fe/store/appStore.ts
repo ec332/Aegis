@@ -112,8 +112,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Check backend health first
       await get().checkBackendHealth();
 
-      // Load current user wallet
-      await get().loadCurrentUserWallet(DEFAULT_USER_ID);
+      
 
       const [markets] = await Promise.all([
         fetchMarkets(),

@@ -79,6 +79,8 @@ class APIError extends Error {
   }
 }
 
+import { getStoredToken } from "@/services/auth";
+
 async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
@@ -87,10 +89,12 @@ async function fetchWithRetry(
 ): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
+      const token = typeof window !== 'undefined' ? getStoredToken() : null;
       const response = await fetch(url, {
         ...options,
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...options.headers,
         },
       });
@@ -102,11 +106,20 @@ async function fetchWithRetry(
       }
 
       if (!response.ok) {
-        throw new APIError(response.status, `HTTP ${response.status}: ${response.statusText}`);
+        // Do not retry on most 4xx client errors (except 429 Too Many Requests)
+        const err = new APIError(response.status, `HTTP ${response.status}: ${response.statusText}`);
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          throw err;
+        }
+        throw err;
       }
 
       return response;
     } catch (error) {
+      // If client error (4xx except 429), do not retry
+      if (error instanceof APIError && error.status >= 400 && error.status < 500 && error.status !== 429) {
+        throw error;
+      }
       if (attempt === maxRetries - 1) {
         throw error;
       }

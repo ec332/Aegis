@@ -1,29 +1,30 @@
 package main
 
 import (
-    "context"
-    "encoding/json"
-    "bytes"
-    "fmt"
-    "io"
-    "net/http"
-    "strings"
-    "time"
-    "os"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
 
-    "github.com/gorilla/mux"
-    "go.uber.org/zap"
-    "github.com/go-chi/cors"
-    jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/go-chi/cors"
+	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/mux"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 
-    resgrpc "github.com/aegis/shared/grpc"
-    "github.com/aegis/shared/kafka"
-    "github.com/aegis/shared/metrics"
-    market "github.com/aegis/proto/gen/market"
-    wallet "github.com/aegis/proto/gen/wallet"
-    settlement "github.com/aegis/proto/gen/settlement"
-    transaction "github.com/aegis/proto/gen/transaction"
-    "google.golang.org/protobuf/types/known/timestamppb"
+	market "github.com/aegis/proto/gen/market"
+	settlement "github.com/aegis/proto/gen/settlement"
+	transaction "github.com/aegis/proto/gen/transaction"
+	wallet "github.com/aegis/proto/gen/wallet"
+	resgrpc "github.com/aegis/shared/grpc"
+	"github.com/aegis/shared/kafka"
+	"github.com/aegis/shared/metrics"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type KafkaPublisher interface {
@@ -31,73 +32,73 @@ type KafkaPublisher interface {
 }
 
 type APIGateway struct {
-    logger          *zap.Logger
-    metrics         *metrics.Registry
-    marketClient    *resgrpc.ResilientClient
-    walletClient    *resgrpc.ResilientClient
-    settlementClient *resgrpc.ResilientClient
-    transactionClient *resgrpc.ResilientClient
-    kafkaProducer   KafkaPublisher
-    marketStub      market.MarketServiceClient
-    walletStub      wallet.WalletServiceClient
-    settlementStub  settlement.SettlementServiceClient
-    transactionStub transaction.TransactionServiceClient
+	logger            *zap.Logger
+	metrics           *metrics.Registry
+	marketClient      *resgrpc.ResilientClient
+	walletClient      *resgrpc.ResilientClient
+	settlementClient  *resgrpc.ResilientClient
+	transactionClient *resgrpc.ResilientClient
+	kafkaProducer     KafkaPublisher
+	marketStub        market.MarketServiceClient
+	walletStub        wallet.WalletServiceClient
+	settlementStub    settlement.SettlementServiceClient
+	transactionStub   transaction.TransactionServiceClient
 }
 
 func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIGateway, error) {
-    marketAddr := getEnv("MARKET_SERVICE_GRPC_ADDR", "market-service:50051")
-    walletAddr := getEnv("WALLET_SERVICE_GRPC_ADDR", "wallet-service:50052")
-    settlementAddr := getEnv("SETTLEMENT_SERVICE_GRPC_ADDR", "settlement-service:50053")
-    transactionAddr := getEnv("TRANSACTION_SERVICE_GRPC_ADDR", "transaction-service:50052")
+	marketAddr := getEnv("MARKET_SERVICE_GRPC_ADDR", "market-service:50051")
+	walletAddr := getEnv("WALLET_SERVICE_GRPC_ADDR", "wallet-service:50052")
+	settlementAddr := getEnv("SETTLEMENT_SERVICE_GRPC_ADDR", "settlement-service:50053")
+	transactionAddr := getEnv("TRANSACTION_SERVICE_GRPC_ADDR", "transaction-service:50052")
 
-    marketConfig := resgrpc.DefaultClientConfig("market", marketAddr)
-    walletConfig := resgrpc.DefaultClientConfig("wallet", walletAddr)
-    settlementConfig := resgrpc.DefaultClientConfig("settlement", settlementAddr)
-    transactionConfig := resgrpc.DefaultClientConfig("transaction", transactionAddr)
+	marketConfig := resgrpc.DefaultClientConfig("market", marketAddr)
+	walletConfig := resgrpc.DefaultClientConfig("wallet", walletAddr)
+	settlementConfig := resgrpc.DefaultClientConfig("settlement", settlementAddr)
+	transactionConfig := resgrpc.DefaultClientConfig("transaction", transactionAddr)
 
-    marketClient, err := resgrpc.NewResilientClient(marketConfig, logger, metricsRegistry)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create market client: %w", err)
-    }
+	marketClient, err := resgrpc.NewResilientClient(marketConfig, logger, metricsRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create market client: %w", err)
+	}
 
-    walletClient, err := resgrpc.NewResilientClient(walletConfig, logger, metricsRegistry)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create wallet client: %w", err)
-    }
+	walletClient, err := resgrpc.NewResilientClient(walletConfig, logger, metricsRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create wallet client: %w", err)
+	}
 
-    settlementClient, err := resgrpc.NewResilientClient(settlementConfig, logger, metricsRegistry)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create settlement client: %w", err)
-    }
+	settlementClient, err := resgrpc.NewResilientClient(settlementConfig, logger, metricsRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create settlement client: %w", err)
+	}
 
-    transactionClient, err := resgrpc.NewResilientClient(transactionConfig, logger, metricsRegistry)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create transaction client: %w", err)
-    }
+	transactionClient, err := resgrpc.NewResilientClient(transactionConfig, logger, metricsRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction client: %w", err)
+	}
 
-    brokersEnv := getEnv("KAFKA_BROKERS", "kafka:29092")
-    var brokers []string
-    for _, b := range strings.Split(brokersEnv, ",") {
-        b = strings.TrimSpace(b)
-        if b != "" {
-            brokers = append(brokers, b)
-        }
-    }
-    kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: brokers}, logger)
+	brokersEnv := getEnv("KAFKA_BROKERS", "kafka:29092")
+	var brokers []string
+	for _, b := range strings.Split(brokersEnv, ",") {
+		b = strings.TrimSpace(b)
+		if b != "" {
+			brokers = append(brokers, b)
+		}
+	}
+	kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: brokers}, logger)
 
-    return &APIGateway{
-        logger:           logger,
-        metrics:          metricsRegistry,
-        marketClient:     marketClient,
-        walletClient:     walletClient,
-        settlementClient: settlementClient,
-        transactionClient: transactionClient,
-        kafkaProducer:    kafkaProducer,
-        marketStub:       market.NewMarketServiceClient(marketClient.GetConnection()),
-        walletStub:       wallet.NewWalletServiceClient(walletClient.GetConnection()),
-        settlementStub:   settlement.NewSettlementServiceClient(settlementClient.GetConnection()),
-        transactionStub:  transaction.NewTransactionServiceClient(transactionClient.GetConnection()),
-    }, nil
+	return &APIGateway{
+		logger:            logger,
+		metrics:           metricsRegistry,
+		marketClient:      marketClient,
+		walletClient:      walletClient,
+		settlementClient:  settlementClient,
+		transactionClient: transactionClient,
+		kafkaProducer:     kafkaProducer,
+		marketStub:        market.NewMarketServiceClient(marketClient.GetConnection()),
+		walletStub:        wallet.NewWalletServiceClient(walletClient.GetConnection()),
+		settlementStub:    settlement.NewSettlementServiceClient(settlementClient.GetConnection()),
+		transactionStub:   transaction.NewTransactionServiceClient(transactionClient.GetConnection()),
+	}, nil
 }
 
 func (g *APIGateway) handleMarketRequest(w http.ResponseWriter, r *http.Request) {
@@ -261,24 +262,24 @@ func (g *APIGateway) handleWalletRequest(w http.ResponseWriter, r *http.Request)
 }
 
 func (g *APIGateway) handleUserRequest(w http.ResponseWriter, r *http.Request) {
-    ctx := r.Context()
-    path := r.URL.Path
-    method := r.Method
+	ctx := r.Context()
+	path := r.URL.Path
+	method := r.Method
 
-    switch {
-    case method == "POST" && strings.HasSuffix(path, "/auth/nonce"):
-        g.requestNonce(ctx, w, r)
-    case method == "POST" && strings.HasSuffix(path, "/auth/verify"):
-        g.verifySignature(ctx, w, r)
-    case method == "GET" && strings.HasSuffix(path, "/auth/me"):
-        g.me(ctx, w, r)
-    case method == "POST" && strings.HasSuffix(path, "/user/nonce"):
-        g.requestNonce(ctx, w, r)
-    case method == "POST" && strings.HasSuffix(path, "/user/verify"):
-        g.verifySignature(ctx, w, r)
-    case method == "GET" && strings.Contains(path, "/users/wallet/"):
-        // GET /api/users/wallet/{wallet_address}
-        g.getUserByWallet(ctx, w, r)
+	switch {
+	case method == "POST" && strings.HasSuffix(path, "/auth/nonce"):
+		g.requestNonce(ctx, w, r)
+	case method == "POST" && strings.HasSuffix(path, "/auth/verify"):
+		g.verifySignature(ctx, w, r)
+	case method == "GET" && strings.HasSuffix(path, "/auth/me"):
+		g.me(ctx, w, r)
+	case method == "POST" && strings.HasSuffix(path, "/user/nonce"):
+		g.requestNonce(ctx, w, r)
+	case method == "POST" && strings.HasSuffix(path, "/user/verify"):
+		g.verifySignature(ctx, w, r)
+	case method == "GET" && strings.Contains(path, "/users/wallet/"):
+		// GET /api/users/wallet/{wallet_address}
+		g.getUserByWallet(ctx, w, r)
 	case method == "GET" && strings.Contains(path, "/users/") && !strings.Contains(path, "/wallet/"):
 		// GET /api/users/{id}
 		g.getUser(ctx, w, r)
@@ -294,12 +295,18 @@ func (g *APIGateway) handleUserRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *APIGateway) createWallet(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	var req wallet.CreateWalletAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    var req wallet.CreateWalletAccountRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
 
+	ctx = g.withAuth(ctx, r)
 	resp, err := g.walletStub.CreateWalletAccount(ctx, &req)
 
 	if err != nil {
@@ -311,14 +318,20 @@ func (g *APIGateway) createWallet(ctx context.Context, w http.ResponseWriter, r 
 }
 
 func (g *APIGateway) getWallet(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	walletID := extractIDFromPath(r.URL.Path, "wallets")
-	if walletID == "" {
-		http.Error(w, "Wallet ID required", http.StatusBadRequest)
-		return
-	}
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    walletID := extractIDFromPath(r.URL.Path, "wallets")
+    if walletID == "" {
+        http.Error(w, "Wallet ID required", http.StatusBadRequest)
+        return
+    }
 
 	req := &wallet.GetWalletAccountRequest{Id: walletID}
 
+	ctx = g.withAuth(ctx, r)
 	resp, err := g.walletStub.GetWalletAccount(ctx, req)
 
 	if err != nil {
@@ -330,11 +343,16 @@ func (g *APIGateway) getWallet(ctx context.Context, w http.ResponseWriter, r *ht
 }
 
 func (g *APIGateway) deposit(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	walletID := extractIDFromPath(r.URL.Path, "wallets")
-	if walletID == "" {
-		http.Error(w, "Wallet ID required", http.StatusBadRequest)
-		return
-	}
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    walletID := extractIDFromPath(r.URL.Path, "wallets")
+    if walletID == "" {
+        http.Error(w, "Wallet ID required", http.StatusBadRequest)
+        return
+    }
 
 	var req wallet.DepositRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -343,6 +361,7 @@ func (g *APIGateway) deposit(ctx context.Context, w http.ResponseWriter, r *http
 	}
 	req.AccountId = walletID
 
+	ctx = g.withAuth(ctx, r)
 	resp, err := g.walletStub.Deposit(ctx, &req)
 
 	if err != nil {
@@ -354,11 +373,16 @@ func (g *APIGateway) deposit(ctx context.Context, w http.ResponseWriter, r *http
 }
 
 func (g *APIGateway) withdraw(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	walletID := extractIDFromPath(r.URL.Path, "wallets")
-	if walletID == "" {
-		http.Error(w, "Wallet ID required", http.StatusBadRequest)
-		return
-	}
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    walletID := extractIDFromPath(r.URL.Path, "wallets")
+    if walletID == "" {
+        http.Error(w, "Wallet ID required", http.StatusBadRequest)
+        return
+    }
 
 	var req wallet.WithdrawalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -367,6 +391,7 @@ func (g *APIGateway) withdraw(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	req.AccountId = walletID
 
+	ctx = g.withAuth(ctx, r)
 	resp, err := g.walletStub.Withdrawal(ctx, &req)
 
 	if err != nil {
@@ -387,9 +412,9 @@ func (g *APIGateway) getUser(ctx context.Context, w http.ResponseWriter, r *http
 	}
 
 	req := &wallet.GetUserRequest{Id: userID}
-	
+
 	resp, err := g.walletStub.GetUser(ctx, req)
-	
+
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "GetUser")
 		return
@@ -408,16 +433,16 @@ func (g *APIGateway) getUserByWallet(ctx context.Context, w http.ResponseWriter,
 			break
 		}
 	}
-	
+
 	if walletAddress == "" {
 		http.Error(w, "Wallet address required", http.StatusBadRequest)
 		return
 	}
 
 	req := &wallet.GetUserByWalletRequest{WalletAddress: walletAddress}
-	
+
 	resp, err := g.walletStub.GetUserByWallet(ctx, req)
-	
+
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "GetUserByWallet")
 		return
@@ -444,7 +469,7 @@ func (g *APIGateway) createUser(ctx context.Context, w http.ResponseWriter, r *h
 	}
 
 	resp, err := g.walletStub.CreateUser(ctx, &req)
-	
+
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "CreateUser")
 		return
@@ -478,7 +503,7 @@ func (g *APIGateway) updateUser(ctx context.Context, w http.ResponseWriter, r *h
 	}
 
 	resp, err := g.walletStub.UpdateUser(ctx, &req)
-	
+
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "UpdateUser")
 		return
@@ -601,7 +626,9 @@ func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter,
 
 	// Convert gRPC error to HTTP status
 	status := http.StatusInternalServerError
-	if strings.Contains(err.Error(), "not found") {
+	if strings.Contains(err.Error(), "Unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "authorization required") || strings.Contains(strings.ToLower(err.Error()), "invalid token") {
+		status = http.StatusUnauthorized
+	} else if strings.Contains(err.Error(), "not found") {
 		status = http.StatusNotFound
 	} else if strings.Contains(err.Error(), "invalid") {
 		status = http.StatusBadRequest
@@ -706,6 +733,15 @@ func (g *APIGateway) writeJSONResponse(w http.ResponseWriter, status int, data i
 	json.NewEncoder(w).Encode(data)
 }
 
+func (g *APIGateway) withAuth(ctx context.Context, r *http.Request) context.Context {
+	authz := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authz == "" {
+		return ctx
+	}
+	md := metadata.Pairs("authorization", authz)
+	return metadata.NewOutgoingContext(ctx, md)
+}
+
 func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
@@ -730,25 +766,24 @@ func main() {
 	router.HandleFunc("/api/wallets/{id}/deposit", gateway.handleWalletRequest).Methods("POST")
 	router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
 
-	
-    // User routes and auth
-    router.HandleFunc("/api/users", gateway.handleUserRequest).Methods("POST")
-    router.HandleFunc("/api/users/{id}", gateway.handleUserRequest).Methods("GET", "PUT")
-    router.HandleFunc("/api/users/wallet/{wallet_address}", gateway.handleUserRequest).Methods("GET")
-    router.HandleFunc("/user/nonce", gateway.handleUserRequest).Methods("POST")
-    router.HandleFunc("/user/verify", gateway.handleUserRequest).Methods("POST")
-    router.HandleFunc("/auth/nonce", gateway.handleUserRequest).Methods("POST")
-    router.HandleFunc("/auth/verify", gateway.handleUserRequest).Methods("POST")
-    router.HandleFunc("/auth/me", gateway.handleUserRequest).Methods("GET")
-	
+	// User routes and auth
+	router.HandleFunc("/api/users", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/api/users/{id}", gateway.handleUserRequest).Methods("GET", "PUT")
+	router.HandleFunc("/api/users/wallet/{wallet_address}", gateway.handleUserRequest).Methods("GET")
+	router.HandleFunc("/user/nonce", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/user/verify", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/auth/nonce", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/auth/verify", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/auth/me", gateway.handleUserRequest).Methods("GET")
+
 	// Settlement routes
 	router.HandleFunc("/api/settlements", gateway.handleSettlementRequest).Methods("POST")
 	router.HandleFunc("/api/settlements/{id}", gateway.handleSettlementRequest).Methods("GET")
 	router.HandleFunc("/api/settlements/{id}/complete", gateway.handleSettlementRequest).Methods("PUT")
-	
+
 	// Transaction routes
 	router.HandleFunc("/api/transactions", gateway.handleTransactionRequest).Methods("GET", "POST")
-	
+
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -799,79 +834,84 @@ func main() {
 }
 
 func (g *APIGateway) requestNonce(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-    var body struct{ Wallet string `json:"wallet"` }
-    if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Wallet) == "" {
-        http.Error(w, "wallet required", http.StatusBadRequest)
-        return
-    }
-    req := &wallet.RequestNonceRequest{Wallet: body.Wallet}
-    resp, err := g.walletStub.RequestNonce(ctx, req)
-    if err != nil {
-        g.handleGRPCError(ctx, w, err, "wallet", "RequestNonce")
-        return
-    }
-    g.writeJSONResponse(w, http.StatusOK, resp)
+	var body struct {
+		Wallet string `json:"wallet"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Wallet) == "" {
+		http.Error(w, "wallet required", http.StatusBadRequest)
+		return
+	}
+	req := &wallet.RequestNonceRequest{Wallet: body.Wallet}
+	resp, err := g.walletStub.RequestNonce(ctx, req)
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "wallet", "RequestNonce")
+		return
+	}
+	g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 func (g *APIGateway) verifySignature(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-    var body struct{ Wallet string `json:"wallet"`; Signature string `json:"signature"` }
-    if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Wallet) == "" || strings.TrimSpace(body.Signature) == "" {
-        http.Error(w, "wallet and signature required", http.StatusBadRequest)
-        return
-    }
-    req := &wallet.VerifySignatureRequest{Wallet: body.Wallet, Signature: body.Signature}
-    resp, err := g.walletStub.VerifySignature(ctx, req)
-    if err != nil {
-        g.handleGRPCError(ctx, w, err, "wallet", "VerifySignature")
-        return
-    }
-    g.writeJSONResponse(w, http.StatusOK, resp)
+	var body struct {
+		Wallet    string `json:"wallet"`
+		Signature string `json:"signature"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Wallet) == "" || strings.TrimSpace(body.Signature) == "" {
+		http.Error(w, "wallet and signature required", http.StatusBadRequest)
+		return
+	}
+	req := &wallet.VerifySignatureRequest{Wallet: body.Wallet, Signature: body.Signature}
+	resp, err := g.walletStub.VerifySignature(ctx, req)
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "wallet", "VerifySignature")
+		return
+	}
+	g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 // GET /auth/me - returns current user profile using JWT
 func (g *APIGateway) me(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-    authz := strings.TrimSpace(r.Header.Get("Authorization"))
-    if authz == "" || !strings.HasPrefix(authz, "Bearer ") {
-        http.Error(w, "authorization required", http.StatusUnauthorized)
-        return
-    }
-    tokenString := strings.TrimSpace(strings.TrimPrefix(authz, "Bearer "))
-    secret := strings.TrimSpace(getEnv("AUTH_JWT_SECRET", "dev-secret"))
+	authz := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authz == "" || !strings.HasPrefix(authz, "Bearer ") {
+		http.Error(w, "authorization required", http.StatusUnauthorized)
+		return
+	}
+	tokenString := strings.TrimSpace(strings.TrimPrefix(authz, "Bearer "))
+	secret := strings.TrimSpace(getEnv("AUTH_JWT_SECRET", "dev-secret"))
 
-    // Validate token and extract wallet claim
-    type validator interface{ }
-    _ = validator(nil)
-    claimsWallet, err := parseWalletFromJWT(tokenString, secret)
-    if err != nil || claimsWallet == "" {
-        http.Error(w, "invalid token", http.StatusUnauthorized)
-        return
-    }
-    resp, err := g.walletStub.GetUserByWallet(ctx, &wallet.GetUserByWalletRequest{WalletAddress: claimsWallet})
-    if err != nil {
-        g.handleGRPCError(ctx, w, err, "wallet", "GetUserByWallet")
-        return
-    }
-    g.writeJSONResponse(w, http.StatusOK, resp)
+	// Validate token and extract wallet claim
+	type validator interface{}
+	_ = validator(nil)
+	claimsWallet, err := parseWalletFromJWT(tokenString, secret)
+	if err != nil || claimsWallet == "" {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+	resp, err := g.walletStub.GetUserByWallet(ctx, &wallet.GetUserByWalletRequest{WalletAddress: claimsWallet})
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "wallet", "GetUserByWallet")
+		return
+	}
+	g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 // Minimal JWT parsing for HS256 to get wallet claim
 func parseWalletFromJWT(tokenString string, secret string) (string, error) {
-    token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-        if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-            return nil, fmt.Errorf("invalid signing method")
-        }
-        return []byte(secret), nil
-    })
-    if err != nil {
-        return "", err
-    }
-    if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-        if w, ok := claims["wallet"].(string); ok {
-            return w, nil
-        }
-        return "", fmt.Errorf("wallet claim missing")
-    }
-    return "", fmt.Errorf("invalid token")
+	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("invalid signing method")
+		}
+		return []byte(secret), nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		if w, ok := claims["wallet"].(string); ok {
+			return w, nil
+		}
+		return "", fmt.Errorf("wallet claim missing")
+	}
+	return "", fmt.Errorf("invalid token")
 }
 
 func getEnv(key, def string) string {
