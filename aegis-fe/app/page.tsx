@@ -3,6 +3,7 @@
 import MarketCard from "@/components/MarketCard";
 import TradeModal from "@/components/TradeModal";
 import WalletManager from "@/components/WalletManager";
+import MarketForm from "@/components/MarketForm";
 import { useAppStore } from "@/store/appStore";
 import { Market, Option } from "@/types";
 import { DEFAULT_USER_ID } from "@/constants";
@@ -15,7 +16,8 @@ export default function Home() {
     market: Market;
     options: Option[];
   } | null>(null);
-  const [activeTab, setActiveTab] = useState<'markets' | 'wallet'>('markets');
+    const [activeTab, setActiveTab] = useState<'markets' | 'wallet' | 'form'>('markets');
+
 
   // Initialize app on mount
   useEffect(() => {
@@ -71,6 +73,16 @@ export default function Home() {
               >
                 Wallet
               </button>
+              <button
+                onClick={() => setActiveTab('form')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'form'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                form
+              </button>
             </nav>
           </div>
         </div>
@@ -106,6 +118,14 @@ export default function Home() {
               Wallet Management
             </h2>
             <WalletManager userId={DEFAULT_USER_ID} />
+          </div>
+        )}
+        {activeTab === 'form' && (
+          <div>
+            <h2 className="text-2xl font-bold text-[#151b4d] mb-8">
+              Create Market
+            </h2>
+            <MarketForm />
           </div>
         )}
 
