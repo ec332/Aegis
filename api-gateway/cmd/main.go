@@ -44,10 +44,15 @@ type APIGateway struct {
 }
 
 func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIGateway, error) {
-    marketConfig := resgrpc.DefaultClientConfig("market", "market-service:50051")
-    walletConfig := resgrpc.DefaultClientConfig("wallet", "wallet-service:50052")
-    settlementConfig := resgrpc.DefaultClientConfig("settlement", "settlement-service:50053")
-    transactionConfig := resgrpc.DefaultClientConfig("transaction", "transaction-service:50052")
+    marketAddr := getEnv("MARKET_SERVICE_GRPC_ADDR", "market-service:50051")
+    walletAddr := getEnv("WALLET_SERVICE_GRPC_ADDR", "wallet-service:50052")
+    settlementAddr := getEnv("SETTLEMENT_SERVICE_GRPC_ADDR", "settlement-service:50053")
+    transactionAddr := getEnv("TRANSACTION_SERVICE_GRPC_ADDR", "transaction-service:50052")
+
+    marketConfig := resgrpc.DefaultClientConfig("market", marketAddr)
+    walletConfig := resgrpc.DefaultClientConfig("wallet", walletAddr)
+    settlementConfig := resgrpc.DefaultClientConfig("settlement", settlementAddr)
+    transactionConfig := resgrpc.DefaultClientConfig("transaction", transactionAddr)
 
     marketClient, err := resgrpc.NewResilientClient(marketConfig, logger, metricsRegistry)
     if err != nil {

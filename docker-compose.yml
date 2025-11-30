@@ -59,19 +59,25 @@ services:
       MARKET_SERVICE_GRPC_ADDR: market-service:50051
       WALLET_SERVICE_GRPC_ADDR: wallet-service:50052
       SETTLEMENT_SERVICE_GRPC_ADDR: settlement-service:50053
+      TRANSACTION_SERVICE_GRPC_ADDR: transaction-service:50052
       KAFKA_BROKERS: kafka:29092
       CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
       CORS_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
       CORS_HEADERS: "Accept,Content-Type,Authorization"
     depends_on:
-      - market-service
-      - wallet-service
-      - settlement-service
-      - kafka
+      market-service:
+        condition: service_started
+      wallet-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+      transaction-service:
+        condition: service_started
+      kafka:
+        condition: service_started
     ports:
       - "8080:8080"
 
-  # transaction-service removed (legacy HTTP-only service not used by API Gateway)
   transaction-service:
     build:
       context: .
@@ -89,8 +95,7 @@ services:
         condition: service_healthy
       market-service:
         condition: service_started
-    ports:
-      - "50052:50052"
+    # internal-only; requests go through API Gateway
 
   market-service:
     build:
@@ -105,8 +110,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "50051:50051" # gRPC port
+    # internal-only; requests go through API Gateway
 
   redis:
     image: redis:7-alpine
@@ -133,8 +137,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "50053:50053" # gRPC port
+    # internal-only; requests go through API Gateway
 
   wallet-service:
     build:
@@ -150,8 +153,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "50052:50052" # gRPC port
+    # internal-only; requests go through API Gateway
 
 volumes:
   pgdata:
