@@ -5,7 +5,7 @@ import TradeModal from "@/components/TradeModal";
 import { useAppStore } from "@/store";
 import { Transaction, Market, Option } from "@/types";
 import { useEffect, useState } from "react";
-import { fetchMarketById, fetchOptionByMarketId } from "@/services/api";
+import { fetchMarketById, fetchOptionsByMarketId } from "@/services/api";
 
 export default function TransactionsPage() {
   const { transactions, loadTransactions, removeTransaction } = useAppStore();
@@ -29,7 +29,8 @@ export default function TransactionsPage() {
       for (const transaction of transactions) {
         if (!transactionDetails[transaction.id]) {
           const market = await fetchMarketById(transaction.market_id);
-          const option = await fetchOptionById(transaction.option_id);
+          const options = await fetchOptionsByMarketId(transaction.market_id);
+          const option = options.find(o => o.id === transaction.option_id) as Option | undefined;
           
           if (market && option) {
             details[transaction.id] = { market, option };
@@ -45,14 +46,10 @@ export default function TransactionsPage() {
     if (transactions.length > 0) {
       loadDetails();
     }
-  }, [transactions, transactionDetails]);
+  }, [transactions]);
 
   const handleEdit = (transaction: Transaction) => {
     setEditingTransaction(transaction);
-  };
-
-  const handleDelete = async (transactionId: string) => {
-    await removeTransaction(transactionId);
   };
 
   const handleCloseModal = () => {
@@ -86,8 +83,6 @@ export default function TransactionsPage() {
                     transaction={transaction}
                     market={details.market}
                     option={details.option}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
                   />
                 );
               })}

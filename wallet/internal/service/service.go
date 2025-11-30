@@ -3,17 +3,17 @@ package service
 import (
     "context"
     "fmt"
-    "time"
     "strings"
+    "time"
 
     "aegis/wallet/internal/repository"
     "aegis/wallet/pkg/models"
 
-    "github.com/google/uuid"
-    "go.uber.org/zap"
-    "github.com/ethereum/go-ethereum/accounts"
-    "github.com/ethereum/go-ethereum/common/hexutil"
-    "github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // Service handles business logic for wallet operations
@@ -24,10 +24,10 @@ type Service struct {
 
 // New creates a new service instance
 func New(repo *repository.Repository, logger *zap.Logger) *Service {
-    return &Service{
-        repo:   repo,
-        logger: logger,
-    }
+	return &Service{
+		repo:   repo,
+		logger: logger,
+	}
 }
 
 // CreateUser creates a new user
@@ -80,83 +80,123 @@ func (s *Service) GetUserByWalletAddress(ctx context.Context, walletAddress stri
 
 // UpdateUser updates a user and returns the updated user
 func (s *Service) UpdateUser(ctx context.Context, userID string, req models.UpdateUserRequest) (*models.User, error) {
-    if err := s.repo.UpdateUser(ctx, userID, req); err != nil {
-        return nil, fmt.Errorf("update user: %w", err)
-    }
+	if err := s.repo.UpdateUser(ctx, userID, req); err != nil {
+		return nil, fmt.Errorf("update user: %w", err)
+	}
 
-    // Return the updated user
-    return s.GetUser(ctx, userID)
+	// Return the updated user
+	return s.GetUser(ctx, userID)
 }
 
 // RequestNonce generates and persists a nonce for the given wallet address
 func (s *Service) RequestNonce(ctx context.Context, wallet string) (string, error) {
-    if wallet == "" {
-        return "", fmt.Errorf("wallet is required")
-    }
-    nonce := fmt.Sprintf("Login verification: %s", uuid.New().String())
-    _, err := s.repo.GetUserByWalletAddress(ctx, wallet)
-    if err != nil {
-        now := time.Now()
-        userID := uuid.New().String()
-        u := &models.User{ID: userID, WalletAddress: wallet, Balance: 0, Nonce: nonce, Role: models.UserRoleUser, CreatedAt: now, UpdatedAt: now}
-        if err2 := s.repo.CreateUser(ctx, u); err2 != nil {
-            return "", fmt.Errorf("create user: %w", err2)
-        }
-        return nonce, nil
-    }
-    if err := s.repo.SetNonceByWallet(ctx, wallet, nonce); err != nil {
-        return "", fmt.Errorf("set nonce: %w", err)
-    }
-    return nonce, nil
+	if wallet == "" {
+		return "", fmt.Errorf("wallet is required")
+	}
+	nonce := fmt.Sprintf("Login verification: %s", uuid.New().String())
+	_, err := s.repo.GetUserByWalletAddress(ctx, wallet)
+	if err != nil {
+		now := time.Now()
+		userID := uuid.New().String()
+		u := &models.User{ID: userID, WalletAddress: wallet, Balance: 0, Nonce: nonce, Role: models.UserRoleUser, CreatedAt: now, UpdatedAt: now}
+		if err2 := s.repo.CreateUser(ctx, u); err2 != nil {
+			return "", fmt.Errorf("create user: %w", err2)
+		}
+		return nonce, nil
+	}
+	if err := s.repo.SetNonceByWallet(ctx, wallet, nonce); err != nil {
+		return "", fmt.Errorf("set nonce: %w", err)
+	}
+	return nonce, nil
 }
 
 // VerifySignature verifies an Ethereum signature and returns JWT if valid
 func (s *Service) VerifySignature(ctx context.Context, wallet string, signature string, tokenGen func(wallet string) (string, error)) (string, error) {
-    if wallet == "" || signature == "" {
-        return "", fmt.Errorf("wallet and signature are required")
-    }
-    user, err := s.repo.GetUserByWalletAddress(ctx, wallet)
-    if err != nil {
-        return "", fmt.Errorf("user not found")
-    }
-    msg := []byte(user.Nonce)
-    hash := accounts.TextHash(msg)
-    sig, err := hexutil.Decode(signature)
-    if err != nil {
-        return "", fmt.Errorf("invalid signature")
-    }
-    if len(sig) != 65 {
-        return "", fmt.Errorf("invalid signature length")
-    }
-    if sig[64] >= 27 {
-        sig[64] -= 27
-    }
-    pubKey, err := crypto.SigToPub(hash, sig)
-    if err != nil {
-        return "", fmt.Errorf("recover failed")
-    }
-    recovered := crypto.PubkeyToAddress(*pubKey).Hex()
-    if !equalEthAddr(recovered, wallet) {
-        return "", fmt.Errorf("signature mismatch")
-    }
-    if err := s.repo.SetLastLoginByWallet(ctx, wallet, time.Now()); err != nil {
-        return "", fmt.Errorf("update last_login: %w", err)
-    }
-    token, err := tokenGen(wallet)
-    if err != nil {
-        return "", fmt.Errorf("token generation failed")
-    }
-    return token, nil
+	if wallet == "" || signature == "" {
+		return "", fmt.Errorf("wallet and signature are required")
+	}
+	user, err := s.repo.GetUserByWalletAddress(ctx, wallet)
+	if err != nil {
+		return "", fmt.Errorf("user not found")
+	}
+	msg := []byte(user.Nonce)
+	hash := accounts.TextHash(msg)
+	sig, err := hexutil.Decode(signature)
+	if err != nil {
+		return "", fmt.Errorf("invalid signature")
+	}
+	if len(sig) != 65 {
+		return "", fmt.Errorf("invalid signature length")
+	}
+	if sig[64] >= 27 {
+		sig[64] -= 27
+	}
+	pubKey, err := crypto.SigToPub(hash, sig)
+	if err != nil {
+		return "", fmt.Errorf("recover failed")
+	}
+	recovered := crypto.PubkeyToAddress(*pubKey).Hex()
+	if !equalEthAddr(recovered, wallet) {
+		return "", fmt.Errorf("signature mismatch")
+	}
+	if err := s.repo.SetLastLoginByWallet(ctx, wallet, time.Now()); err != nil {
+		return "", fmt.Errorf("update last_login: %w", err)
+	}
+	token, err := tokenGen(wallet)
+	if err != nil {
+		return "", fmt.Errorf("token generation failed")
+	}
+	return token, nil
 }
 
 func equalEthAddr(a, b string) bool {
-    aa := strings.ToLower(strings.TrimSpace(a))
-    bb := strings.ToLower(strings.TrimSpace(b))
-    if !strings.HasPrefix(aa, "0x") {
-        aa = "0x" + aa
+	aa := strings.ToLower(strings.TrimSpace(a))
+	bb := strings.ToLower(strings.TrimSpace(b))
+	if !strings.HasPrefix(aa, "0x") {
+		aa = "0x" + aa
+	}
+	if !strings.HasPrefix(bb, "0x") {
+		bb = "0x" + bb
+	}
+	return aa == bb
+}
+
+func (s *Service) CreateWalletAccount(ctx context.Context, userID string, currency string) (*models.WalletAccount, error) {
+    if userID == "" || currency == "" {
+        return nil, fmt.Errorf("user_id and currency are required")
     }
-    if !strings.HasPrefix(bb, "0x") {
-        bb = "0x" + bb
+    acc, err := s.repo.GetWalletAccountByUserCurrency(ctx, userID, currency)
+    if err == nil {
+        return acc, nil
     }
-    return aa == bb
+    now := time.Now()
+    id := uuid.New().String()
+    newAcc := &models.WalletAccount{ID: id, UserID: userID, Currency: currency, Balance: 0, Status: "active", CreatedAt: now, UpdatedAt: now}
+    out, err := s.repo.CreateWalletAccount(ctx, newAcc)
+    if err != nil {
+        return nil, fmt.Errorf("create wallet account: %w", err)
+    }
+    return out, nil
+}
+
+func (s *Service) GetWalletAccount(ctx context.Context, id string) (*models.WalletAccount, error) {
+    if id == "" {
+        return nil, fmt.Errorf("id is required")
+    }
+    acc, err := s.repo.GetWalletAccount(ctx, id)
+    if err != nil {
+        return nil, fmt.Errorf("get wallet account: %w", err)
+    }
+    return acc, nil
+}
+
+func (s *Service) UpdateWalletBalance(ctx context.Context, walletID string, amount float64, txType string, refID string) (*models.WalletTransaction, error) {
+    if walletID == "" || txType == "" {
+        return nil, fmt.Errorf("walletID and txType are required")
+    }
+    tx, _, err := s.repo.UpdateWalletBalanceAndCreateTransaction(ctx, walletID, amount, txType, refID)
+    if err != nil {
+        return nil, fmt.Errorf("update balance: %w", err)
+    }
+    return tx, nil
 }

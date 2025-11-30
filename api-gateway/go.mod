@@ -6,11 +6,12 @@ require (
 	github.com/aegis/proto v0.0.0
 	github.com/aegis/shared v0.0.0
 	github.com/go-chi/cors v1.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/gorilla/mux v1.8.1
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0
 	google.golang.org/grpc v1.65.0
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	google.golang.org/protobuf v1.34.1
 )
 
 replace aegis => ../
@@ -31,6 +32,5 @@ require (
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240528184218-531527333157 // indirect
-	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

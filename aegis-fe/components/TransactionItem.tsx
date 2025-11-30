@@ -25,6 +25,9 @@ export default function TransactionItem({
     minute: "2-digit",
   });
 
+  const marketTitle = (market as any).question || (market as any).title || "Untitled Market";
+  const optionTitle = (option as any).option_text || (option as any).title || "Option";
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -36,7 +39,7 @@ export default function TransactionItem({
               <label className="text-xs font-semibold text-gray-500 uppercase">
                 Market
               </label>
-              <p className="text-sm font-medium text-gray-900">{market.title}</p>
+              <p className="text-sm font-medium text-gray-900">{marketTitle}</p>
             </div>
 
             {/* Market Description */}
@@ -52,7 +55,7 @@ export default function TransactionItem({
               <label className="text-xs font-semibold text-gray-500 uppercase">
                 Option
               </label>
-              <p className="text-sm font-medium text-gray-900">{option.title}</p>
+              <p className="text-sm font-medium text-gray-900">{optionTitle}</p>
             </div>
 
             {/* Price */}
