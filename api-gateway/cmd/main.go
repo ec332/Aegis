@@ -3,7 +3,9 @@ package main
 import (
     "context"
     "encoding/json"
+    "bytes"
     "fmt"
+    "io"
     "net/http"
     "strings"
     "time"
@@ -19,6 +21,7 @@ import (
     market "github.com/aegis/proto/gen/market"
     wallet "github.com/aegis/proto/gen/wallet"
     settlement "github.com/aegis/proto/gen/settlement"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type KafkaPublisher interface {
@@ -134,11 +137,39 @@ func (g *APIGateway) getMarket(ctx context.Context, w http.ResponseWriter, r *ht
 }
 
 func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	var req market.CreateMarketRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+    g.logger.Info("HTTP request",
+        zap.String("method", r.Method),
+        zap.String("path", r.URL.Path),
+        zap.String("remote", r.RemoteAddr))
+
+    bodyBytes, _ := io.ReadAll(r.Body)
+    g.logger.Info("Request body", zap.String("body", string(bodyBytes)))
+    r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+    var body struct {
+        Question    string   `json:"question"`
+        Description string   `json:"description"`
+        Options     []string `json:"options"`
+        EndTime     string   `json:"end_time"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
+
+    req := market.CreateMarketRequest{
+        Question:    body.Question,
+        Description: body.Description,
+        Options:     body.Options,
+    }
+    if body.EndTime != "" {
+        t, err := time.Parse(time.RFC3339, body.EndTime)
+        if err != nil {
+            http.Error(w, "Invalid end_time format", http.StatusBadRequest)
+            return
+        }
+        req.EndTime = timestamppb.New(t)
+    }
 
     resp, err := g.marketStub.CreateMarket(ctx, &req)
 	

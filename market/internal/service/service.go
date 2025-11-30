@@ -10,19 +10,22 @@ import (
 	"github.com/ec332/aegis/market/pkg/models"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 // Service handles business logic for markets
 type Service struct {
 	repo        *repository.Repository
 	redisClient *redis.Client
+	logger      *zap.Logger
 }
 
 // New creates a new service instance
-func New(repo *repository.Repository, redisClient *redis.Client) *Service {
+func New(repo *repository.Repository, redisClient *redis.Client, logger *zap.Logger) *Service {
 	return &Service{
 		repo:        repo,
 		redisClient: redisClient,
+		logger:      logger,
 	}
 }
 
@@ -32,6 +35,9 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
 	if err := s.validateCreateMarketRequest(req); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
+
+	s.logger.Info("CreateMarket request",
+		zap.Any("request", req))
 
 	now := time.Now()
 	marketID := uuid.New().String()
@@ -82,7 +88,8 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
 
 	// Publish market creation event to Redis
 	if err := s.publishLiquidityUpdate(ctx, marketID, pools); err != nil {
-		fmt.Printf("Warning: failed to publish market creation: %v\n", err)
+		s.logger.Warn("failed to publish market creation",
+			zap.Error(err))
 	}
 
 	return market, nil
@@ -134,7 +141,8 @@ func (s *Service) UpdateMarket(ctx context.Context, marketID string, req models.
 
 	// Publish update to Redis
 	if err := s.publishLiquidityUpdate(ctx, marketID, market.LiquidityPools); err != nil {
-		fmt.Printf("Warning: failed to publish market update: %v\n", err)
+		s.logger.Warn("failed to publish market update",
+			zap.Error(err))
 	}
 
 	return market, nil
@@ -154,7 +162,8 @@ func (s *Service) UpdateLiquidityPool(ctx context.Context, marketID, poolID stri
 
 	// Publish to Redis
 	if err := s.publishLiquidityUpdate(ctx, marketID, pools); err != nil {
-		fmt.Printf("Warning: failed to publish liquidity update: %v\n", err)
+		s.logger.Warn("failed to publish liquidity update",
+			zap.Error(err))
 	}
 
 	return nil
@@ -177,7 +186,8 @@ func (s *Service) SubscribeToLiquidityUpdates(ctx context.Context, marketID stri
 			case msg := <-pubsub.Channel():
 				var update models.LiquidityUpdate
 				if err := json.Unmarshal([]byte(msg.Payload), &update); err != nil {
-					fmt.Printf("Error unmarshaling liquidity update: %v\n", err)
+					s.logger.Error("failed to unmarshal liquidity update",
+						zap.Error(err))
 					continue
 				}
 				ch <- update

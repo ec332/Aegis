@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -65,16 +64,16 @@ func main() {
 			logger.Info("Market request queued to Kafka fallback due to gRPC timeout or circuit breaker open",
 				zap.String("market_id", "market-123"),
 				zap.String("method", "GetMarket"))
-			fmt.Println("Request queued to Kafka - will be processed asynchronously")
+			logger.Info("Request queued to Kafka - will be processed asynchronously")
 		} else {
 			logger.Error("Market request failed completely", zap.Error(err))
-			fmt.Printf("Request failed: %v\n", err)
+			logger.Error("Request failed", zap.Error(err))
 		}
 	} else {
 		logger.Info("Market request completed successfully",
 			zap.String("market_id", "market-123"),
 			zap.Any("response", marketResponse))
-		fmt.Printf("Market response: %+v\n", marketResponse)
+		logger.Info("Market response received", zap.Any("response", marketResponse))
 	}
 
 	// Check circuit breaker status
@@ -113,7 +112,7 @@ func main() {
 			logger.Info("Wallet deposit queued to Kafka fallback",
 				zap.String("user_id", "user-456"),
 				zap.Float64("amount", 100.0))
-			fmt.Println("Wallet deposit queued to Kafka")
+			logger.Info("Wallet deposit queued to Kafka")
 		} else {
 			logger.Error("Wallet deposit failed", zap.Error(err))
 		}
@@ -121,11 +120,11 @@ func main() {
 		logger.Info("Wallet deposit completed successfully",
 			zap.String("user_id", "user-456"),
 			zap.Float64("amount", 100.0))
-		fmt.Printf("Wallet response: %+v\n", walletResponse)
+		logger.Info("Wallet response received", zap.Any("response", walletResponse))
 	}
 
 	// Simulate circuit breaker scenario
-	fmt.Println("\n--- Circuit Breaker Simulation ---")
+	logger.Info("--- Circuit Breaker Simulation ---")
 	
 	// Force multiple failures to open the circuit
 	for i := 0; i < 5; i++ {
@@ -137,17 +136,17 @@ func main() {
 		
 		if err != nil {
 			if err == grpc.ErrKafkaFallback {
-				fmt.Printf("Request %d: Queued to Kafka fallback\n", i+1)
+				logger.Info("Request queued to Kafka fallback", zap.Int("request_number", i+1))
 			} else if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
-				fmt.Printf("Request %d: Circuit breaker is OPEN - request rejected immediately\n", i+1)
+				logger.Warn("Circuit breaker is OPEN - request rejected immediately", zap.Int("request_number", i+1))
 			} else {
-				fmt.Printf("Request %d: Failed with error: %v\n", i+1, err)
+				logger.Error("Request failed", zap.Int("request_number", i+1), zap.Error(err))
 			}
 		}
 	}
 
 	// Wait for circuit breaker timeout and test recovery
-	fmt.Println("\nWaiting for circuit breaker timeout...")
+	logger.Info("Waiting for circuit breaker timeout...")
 	time.Sleep(2 * time.Second)
 	
 	// This should now go through (circuit in half-open state)
@@ -158,19 +157,19 @@ func main() {
 	
 	if err != nil {
 		if err == grpc.ErrKafkaFallback {
-			fmt.Println("Recovery test: Request queued to Kafka fallback")
+			logger.Info("Recovery test: Request queued to Kafka fallback")
 		} else {
-			fmt.Printf("Recovery test failed: %v\n", err)
+			logger.Error("Recovery test failed", zap.Error(err))
 		}
 	} else {
-		fmt.Println("Recovery test: Request succeeded - circuit breaker closed!")
+		logger.Info("Recovery test: Request succeeded - circuit breaker closed!")
 	}
 
-	fmt.Println("\n--- Example Complete ---")
-	fmt.Println("The resilient gRPC client provides:")
-	fmt.Println("✓ Automatic circuit breaker with 1-second timeout")
-	fmt.Println("✓ Kafka fallback when gRPC calls timeout or fail")
-	fmt.Println("✓ Exponential backoff retry mechanism")
-	fmt.Println("✓ Comprehensive metrics and observability")
-	fmt.Println("✓ Service-specific topic routing for Kafka messages")
+	logger.Info("--- Example Complete ---")
+	logger.Info("The resilient gRPC client provides:")
+	logger.Info("✓ Automatic circuit breaker with 1-second timeout")
+	logger.Info("✓ Kafka fallback when gRPC calls timeout or fail")
+	logger.Info("✓ Exponential backoff retry mechanism")
+	logger.Info("✓ Comprehensive metrics and observability")
+	logger.Info("✓ Service-specific topic routing for Kafka messages")
 }

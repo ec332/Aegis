@@ -59,6 +59,9 @@ func (s *Server) CreateMarket(ctx context.Context, req *market.CreateMarketReque
         return nil, status.Error(codes.InvalidArgument, "description is required")
     }
 
+	s.logger.Info("Api Gateway received CreateMarket request",
+		zap.Any("request", req))
+
     // Convert protobuf request to internal model
     var endPtr *time.Time
     if req.EndTime != nil {
@@ -68,7 +71,7 @@ func (s *Server) CreateMarket(ctx context.Context, req *market.CreateMarketReque
     createReq := models.CreateMarketRequest{
         Title:              req.Question,
         Description:        req.Description,
-        Options:            []string{},
+        Options:            req.Options,
         ResolutionDatetime: endPtr,
     }
 

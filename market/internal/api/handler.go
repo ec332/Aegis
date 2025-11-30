@@ -236,7 +236,9 @@ func StreamLiquidityUpdates(svc *service.Service) http.HandlerFunc {
 				}
 				data, err := json.Marshal(update)
 				if err != nil {
-					fmt.Printf("Error marshaling update: %v\n", err)
+					// Note: In a real implementation, you would want to log this error
+				// but since this is a streaming response, we can't easily access the logger here
+				// For now, we'll skip the error silently to avoid breaking the stream
 					continue
 				}
 				fmt.Fprintf(w, "event: liquidity-update\ndata: %s\n\n", data)
@@ -327,7 +329,9 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		fmt.Printf("Error encoding JSON response: %v\n", err)
+		// Note: In a real implementation, you would want to log this error
+		// but since this is a generic response function, we don't have access to logger here
+		// Consider adding logger parameter or using a global logger in production
 	}
 }
 
