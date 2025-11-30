@@ -31,16 +31,3 @@ CREATE TABLE IF NOT EXISTS liquidity_pool (
 
 CREATE INDEX IF NOT EXISTS idx_liquidity_pool_market_id ON liquidity_pool(market_id);
 CREATE INDEX IF NOT EXISTS idx_liquidity_pool_option_id ON liquidity_pool(option_id);
-
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY,
-    wallet_address VARCHAR(255) NOT NULL UNIQUE,
-    balance DECIMAL(20, 8) NOT NULL DEFAULT 0,
-    nonce TEXT NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'user',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address);
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);

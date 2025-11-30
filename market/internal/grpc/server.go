@@ -333,15 +333,3 @@ func convertOptionToProto(optionModel *models.Option) *market.Option {
 }
 
 // Liquidity pool conversion removed; not defined in current proto
-
-func convertUserToProto(userModel *models.User) *market.User {
-	return &market.User{
-		Id:            userModel.ID,
-		WalletAddress: userModel.WalletAddress,
-		Balance:       userModel.Balance,
-		Nonce:         userModel.Nonce,
-		Role:          string(userModel.Role),
-		CreatedAt:     timestamppb.New(userModel.CreatedAt),
-		UpdatedAt:     timestamppb.New(userModel.UpdatedAt),
-	}
-}

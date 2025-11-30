@@ -1,5 +1,19 @@
 -- Wallet Service Database Schema
 
+-- Users table (migrated from market service)
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY,
+    wallet_address VARCHAR(255) NOT NULL UNIQUE,
+    balance DECIMAL(20, 8) NOT NULL DEFAULT 0,
+    nonce TEXT NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
 CREATE TABLE IF NOT EXISTS wallet_accounts (
     id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,

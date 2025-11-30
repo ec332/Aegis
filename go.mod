@@ -5,6 +5,8 @@ go 1.22
 require (
 	github.com/aegis/proto v0.0.0-00010101000000-000000000000
 	github.com/aegis/shared v0.0.0-00010101000000-000000000000
+	github.com/google/uuid v1.6.0
+	github.com/lib/pq v1.10.9
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0
 	google.golang.org/grpc v1.65.0

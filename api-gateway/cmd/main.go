@@ -259,6 +259,29 @@ func (g *APIGateway) handleWalletRequest(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+func (g *APIGateway) handleUserRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	path := r.URL.Path
+	method := r.Method
+
+	switch {
+	case method == "GET" && strings.Contains(path, "/users/wallet/"):
+		// GET /api/users/wallet/{wallet_address}
+		g.getUserByWallet(ctx, w, r)
+	case method == "GET" && strings.Contains(path, "/users/") && !strings.Contains(path, "/wallet/"):
+		// GET /api/users/{id}
+		g.getUser(ctx, w, r)
+	case method == "POST" && strings.HasSuffix(path, "/users"):
+		// POST /api/users
+		g.createUser(ctx, w, r)
+	case method == "PUT" && strings.Contains(path, "/users/") && !strings.Contains(path, "/wallet/"):
+		// PUT /api/users/{id}
+		g.updateUser(ctx, w, r)
+	default:
+		http.Error(w, "Not found", http.StatusNotFound)
+	}
+}
+
 func (g *APIGateway) createWallet(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var req wallet.CreateWalletAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -337,6 +360,116 @@ func (g *APIGateway) withdraw(ctx context.Context, w http.ResponseWriter, r *htt
 
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "Withdrawal")
+		return
+	}
+
+	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// User management handlers
+
+func (g *APIGateway) getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	userID := extractIDFromPath(r.URL.Path, "users")
+	if userID == "" {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
+
+	req := &wallet.GetUserRequest{Id: userID}
+	
+	resp, err := g.walletStub.GetUser(ctx, req)
+	
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "wallet", "GetUser")
+		return
+	}
+
+	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+func (g *APIGateway) getUserByWallet(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	// Extract wallet address from path like /api/users/wallet/{wallet_address}
+	parts := strings.Split(r.URL.Path, "/")
+	var walletAddress string
+	for i, part := range parts {
+		if part == "wallet" && i+1 < len(parts) {
+			walletAddress = parts[i+1]
+			break
+		}
+	}
+	
+	if walletAddress == "" {
+		http.Error(w, "Wallet address required", http.StatusBadRequest)
+		return
+	}
+
+	req := &wallet.GetUserByWalletRequest{WalletAddress: walletAddress}
+	
+	resp, err := g.walletStub.GetUserByWallet(ctx, req)
+	
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "wallet", "GetUserByWallet")
+		return
+	}
+
+	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+func (g *APIGateway) createUser(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WalletAddress string  `json:"wallet_address"`
+		Balance       float64 `json:"balance"`
+		Role          string  `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	req := wallet.CreateUserRequest{
+		WalletAddress: body.WalletAddress,
+		Balance:       body.Balance,
+		Role:          body.Role,
+	}
+
+	resp, err := g.walletStub.CreateUser(ctx, &req)
+	
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "wallet", "CreateUser")
+		return
+	}
+
+	g.writeJSONResponse(w, http.StatusCreated, resp)
+}
+
+func (g *APIGateway) updateUser(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	userID := extractIDFromPath(r.URL.Path, "users")
+	if userID == "" {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		WalletAddress string  `json:"wallet_address,omitempty"`
+		Balance       float64 `json:"balance,omitempty"`
+		Role          string  `json:"role,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	req := wallet.UpdateUserRequest{
+		Id:            userID,
+		WalletAddress: body.WalletAddress,
+		Balance:       body.Balance,
+		Role:          body.Role,
+	}
+
+	resp, err := g.walletStub.UpdateUser(ctx, &req)
+	
+	if err != nil {
+		g.handleGRPCError(ctx, w, err, "wallet", "UpdateUser")
 		return
 	}
 
@@ -586,6 +719,12 @@ func main() {
 	router.HandleFunc("/api/wallets/{id}/deposit", gateway.handleWalletRequest).Methods("POST")
 	router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
 
+	
+	// User routes (now handled by Wallet Service)
+	router.HandleFunc("/api/users", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/api/users/{id}", gateway.handleUserRequest).Methods("GET", "PUT")
+	router.HandleFunc("/api/users/wallet/{wallet_address}", gateway.handleUserRequest).Methods("GET")
+	
 	// Settlement routes
 	router.HandleFunc("/api/settlements", gateway.handleSettlementRequest).Methods("POST")
 	router.HandleFunc("/api/settlements/{id}", gateway.handleSettlementRequest).Methods("GET")

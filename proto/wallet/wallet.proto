@@ -18,6 +18,10 @@ service WalletService {
   rpc GetWalletTransactions(GetWalletTransactionsRequest) returns (GetWalletTransactionsResponse);
   rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   rpc SettleTransaction(SettleTransactionRequest) returns (SettleTransactionResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc GetUserByWallet(GetUserByWalletRequest) returns (GetUserResponse);
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
 }
 
 message WalletAccount { string id = 1; string user_id = 2; string address = 3; string currency = 4; double total_balance = 5; double available_balance = 6; string status = 7; google.protobuf.Timestamp created_at = 8; google.protobuf.Timestamp updated_at = 9; }
@@ -45,3 +49,33 @@ message GetTransactionRequest { string id = 1; }
 message GetTransactionResponse { WalletTransaction transaction = 1; }
 message SettleTransactionRequest { string id = 1; string reference_id = 2; }
 message SettleTransactionResponse { WalletTransaction transaction = 1; }
+
+// User management messages
+message User {
+  string id = 1;
+  string wallet_address = 2;
+  double balance = 3;
+  string nonce = 4;
+  string role = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message GetUserRequest { string id = 1; }
+message GetUserByWalletRequest { string wallet_address = 1; }
+message GetUserResponse { User user = 1; }
+
+message CreateUserRequest { 
+  string wallet_address = 1; 
+  double balance = 2; 
+  string role = 3; 
+}
+message CreateUserResponse { User user = 1; }
+
+message UpdateUserRequest { 
+  string id = 1; 
+  string wallet_address = 2; 
+  double balance = 3; 
+  string role = 4; 
+}
+message UpdateUserResponse { User user = 1; }
