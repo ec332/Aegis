@@ -187,4 +187,9 @@ func (r *Repository) FindByMarketID(ctx context.Context, marketID uuid.UUID) ([]
     return out, rows.Err()
 }
 
+func (r *Repository) AdjustMarketLiquidity(ctx context.Context, marketID, optionID uuid.UUID, deltaShares float64) error {
+    _, err := r.pool.Exec(ctx, `UPDATE liquidity_pool SET pool_value = GREATEST(0, pool_value + $1), updated_at = NOW() WHERE market_id=$2 AND option_id=$3`, deltaShares, marketID, optionID)
+    return err
+}
+
 var _ store.Repository = (*Repository)(nil)

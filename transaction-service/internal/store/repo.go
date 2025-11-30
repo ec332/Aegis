@@ -16,4 +16,5 @@ type Repository interface {
     Insert(ctx context.Context, t model.Transaction) (model.Transaction, error)
     Update(ctx context.Context, t model.Transaction) (model.Transaction, error)
     DeleteByID(ctx context.Context, id uuid.UUID) (int64, error)
+    AdjustMarketLiquidity(ctx context.Context, marketID, optionID uuid.UUID, deltaShares float64) error
 }

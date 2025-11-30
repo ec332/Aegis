@@ -47,7 +47,7 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
         ID:                 marketID,
         Title:              req.Title,
         Description:        req.Description,
-        Status:             models.MarketStatusDraft,
+        Status:             models.MarketStatusActive,
         ResolutionDatetime: req.ResolutionDatetime,
         WinningOptionID:    nil,
         CreatedAt:          now,
