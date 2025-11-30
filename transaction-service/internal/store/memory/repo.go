@@ -79,4 +79,8 @@ func (r *Repository) FindByMarketID(ctx context.Context, marketID uuid.UUID) ([]
     return out, nil
 }
 
+func (r *Repository) AdjustMarketLiquidity(ctx context.Context, marketID, optionID uuid.UUID, deltaShares float64) error {
+    return nil
+}
+
 var _ store.Repository = (*Repository)(nil)

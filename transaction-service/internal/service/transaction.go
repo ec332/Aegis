@@ -35,7 +35,16 @@ func (s *TransactionService) Create(ctx context.Context, t model.Transaction) (m
     if t.CreatedAt.IsZero() {
         t.CreatedAt = time.Now().UTC()
     }
-    return s.repo.Insert(ctx, t)
+    created, err := s.repo.Insert(ctx, t)
+    if err != nil {
+        return model.Transaction{}, err
+    }
+    delta := t.NumberOfShares.InexactFloat64()
+    if t.TransactionType == "SELL" {
+        delta = -delta
+    }
+    _ = s.repo.AdjustMarketLiquidity(ctx, t.MarketID, t.OptionID, delta)
+    return created, nil
 }
 
 func (s *TransactionService) Update(ctx context.Context, id uuid.UUID, t model.Transaction) (model.Transaction, error) {

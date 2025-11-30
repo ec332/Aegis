@@ -42,17 +42,17 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
 	now := time.Now()
 	marketID := uuid.New().String()
 
-	// Create market
-	market := &models.Market{
-		ID:                 marketID,
-		Title:              req.Title,
-		Description:        req.Description,
-		Status:             models.MarketStatusActive,
-		ResolutionDatetime: req.ResolutionDatetime,
-		WinningOptionID:    nil,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}
+    // Create market
+    market := &models.Market{
+        ID:                 marketID,
+        Title:              req.Title,
+        Description:        req.Description,
+        Status:             models.MarketStatusActive,
+        ResolutionDatetime: req.ResolutionDatetime,
+        WinningOptionID:    nil,
+        CreatedAt:          now,
+        UpdatedAt:          now,
+    }
 
 	// Create options
 	options := make([]models.Option, len(req.Options))
