@@ -15,7 +15,7 @@ import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 
-    "github.com/aegis/proto/market"
+    "github.com/aegis/proto/gen/market"
     httpHandlers "transaction-service/internal/http"
     "transaction-service/internal/log"
 )

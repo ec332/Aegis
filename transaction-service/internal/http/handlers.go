@@ -13,7 +13,7 @@ import (
     "github.com/jackc/pgx/v5/pgxpool"
     "go.uber.org/zap"
 
-    "github.com/aegis/proto/market"
+    "github.com/aegis/proto/gen/market"
     "transaction-service/internal/model"
     "transaction-service/internal/service"
     storeiface "transaction-service/internal/store"
