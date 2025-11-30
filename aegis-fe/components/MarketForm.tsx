@@ -2,7 +2,11 @@
 
 import { FormEvent, useState } from "react";
 
-export default function MarketForm() {
+type MarketFormProps = {
+  onCreated?: () => void;
+};
+
+export default function MarketForm({ onCreated }: MarketFormProps) {
   const [question, setQuestion] = useState("");
   const [description, setDescription] = useState("");
   const [resolutionDatetime, setResolutionDatetime] = useState("");
@@ -10,7 +14,6 @@ export default function MarketForm() {
   const [option2, setOption2] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [error, setError] = useState("");
-  
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -24,7 +27,7 @@ export default function MarketForm() {
         body: JSON.stringify({
           question,
           description,
-          resolution_datetime: resolutionDatetime,
+          end_time: resolutionDatetime,
           options: [option1, option2],
         }),
       });
@@ -37,6 +40,9 @@ export default function MarketForm() {
       setQuestion("");
       setDescription("");
       setResolutionDatetime("");
+      setOption1("");
+      setOption2("");
+      onCreated?.();
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -53,7 +59,7 @@ export default function MarketForm() {
           onChange={(e) => setQuestion(e.target.value)}
           required
           className="rounded border px-3 py-2"
-          placeholder=''
+          placeholder=""
         />
       </label>
 
@@ -95,8 +101,8 @@ export default function MarketForm() {
         <span>Resolution datetime</span>
         <input
           type="datetime-local"
-          value={resolutionDatetime}
-          onChange={(e) => setResolutionDatetime(e.target.value)}
+          value={resolutionDatetime ? resolutionDatetime.slice(0, 16) : ""}
+          onChange={(e) => setResolutionDatetime(new Date(e.target.value).toISOString())}
           required
           className="rounded border px-3 py-2"
         />
