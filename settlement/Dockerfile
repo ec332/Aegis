@@ -21,8 +21,8 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/settlement/settlement .
 
-# Expose ports
-EXPOSE 8084 50053
+# Expose gRPC port only
+EXPOSE 50053
 
 # Run the binary
 CMD ["./settlement"]

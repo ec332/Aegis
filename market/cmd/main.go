@@ -1,34 +1,30 @@
 package main
 
 import (
-	"context"
-	"database/sql"
-	"fmt"
-	"log"
-	"net"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
+    "context"
+    "database/sql"
+    "fmt"
+    "log"
+    "net"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
 
     market "github.com/aegis/proto/gen/market"
-	grpcserver "github.com/aegis/shared/grpc"
-	"github.com/aegis/shared/metrics"
-	"github.com/aegis/shared/utils"
-	"github.com/ec332/aegis/market/internal/api"
-	marketgrpc "github.com/ec332/aegis/market/internal/grpc"
-	"github.com/ec332/aegis/market/internal/repository"
-	"github.com/ec332/aegis/market/internal/service"
-	"github.com/ec332/aegis/market/pkg/config"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
-	_ "github.com/lib/pq"
-	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
+    grpcserver "github.com/aegis/shared/grpc"
+    "github.com/aegis/shared/metrics"
+    "github.com/aegis/shared/utils"
+    marketgrpc "github.com/ec332/aegis/market/internal/grpc"
+    "github.com/ec332/aegis/market/internal/repository"
+    "github.com/ec332/aegis/market/internal/service"
+    "github.com/ec332/aegis/market/pkg/config"
+    _ "github.com/lib/pq"
+    "github.com/redis/go-redis/v9"
+    "go.uber.org/zap"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/health"
+    "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
@@ -121,52 +117,6 @@ func main() {
 		}
 	}()
 
-	// Setup HTTP server
-	r := chi.NewRouter()
-
-	// CORS
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
-
-	// Register routes
-	r.Post("/markets", api.CreateMarket(svc))
-	r.Get("/markets", api.ListMarkets(svc))
-	r.Get("/markets/{marketId}", api.GetMarket(svc))
-	r.Put("/markets/{marketId}", api.UpdateMarket(svc))
-	r.Get("/markets/{marketId}/stream", api.StreamLiquidityUpdates(svc))
-
-	// LSMR endpoints
-	r.Get("/markets/{marketId}/prices", api.GetMarketPrices(svc))
-	r.Post("/markets/{marketId}/options/{optionId}/cost/buy", api.CalculateBuyCost(svc))
-	r.Post("/markets/{marketId}/options/{optionId}/cost/sell", api.CalculateSellCost(svc))
-
-	// User endpoints
-	r.Post("/users", api.CreateUser(svc))
-	r.Get("/users/{userId}", api.GetUser(svc))
-	r.Put("/users/{userId}", api.UpdateUser(svc))
-	r.Get("/users/wallet/{walletAddress}", api.GetUserByWallet(svc))
-
-	// Create HTTP listener
-	httpAddr := fmt.Sprintf(":%s", cfg.HTTPPort)
-	httpServer := &http.Server{
-		Addr:    httpAddr,
-		Handler: r,
-	}
-
-	// Start HTTP server
-	go func() {
-		logger.Info("Market HTTP service starting", zap.String("address", httpAddr))
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to serve HTTP", zap.Error(err))
-		}
-	}()
-
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -183,9 +133,6 @@ func main() {
 
 	// Stop accepting new connections
 	grpcServer.GracefulStop()
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("HTTP server shutdown error", zap.Error(err))
-	}
 
 	// Wait for ongoing RPCs to complete
 	<-shutdownCtx.Done()

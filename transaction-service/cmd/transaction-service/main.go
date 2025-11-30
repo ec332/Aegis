@@ -12,7 +12,10 @@ import (
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/spf13/viper"
     "go.uber.org/zap"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 
+    "github.com/aegis/proto/market"
     httpHandlers "transaction-service/internal/http"
     "transaction-service/internal/log"
 )
@@ -26,6 +29,7 @@ func main() {
     viper.SetDefault("DB_NAME", "transaction")
     viper.SetDefault("DB_USER", "postgres")
     viper.SetDefault("DB_PASSWORD", "postgres")
+    viper.SetDefault("MARKET_GRPC_ADDR", "localhost:50051")
 
     logger := log.New()
     defer logger.Sync()
@@ -49,6 +53,17 @@ func main() {
     }
     defer pool.Close()
 
+    // Create market gRPC client
+    marketAddr := viper.GetString("MARKET_GRPC_ADDR")
+    marketConn, err := grpc.Dial(marketAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+    if err != nil {
+        logger.Fatal("failed to connect to market service", zap.String("addr", marketAddr), zap.Error(err))
+    }
+    defer marketConn.Close()
+    
+    marketClient := market.NewMarketServiceClient(marketConn)
+    logger.Info("connected to market service", zap.String("addr", marketAddr))
+
     r := chi.NewRouter()
     r.Use(middleware.RequestID)
     r.Use(middleware.RealIP)
@@ -62,7 +77,7 @@ func main() {
         _, _ = w.Write([]byte("{\"status\":\"healthy\"}"))
     })
 
-    handler := httpHandlers.New(pool, logger)
+    handler := httpHandlers.NewWithMarketClient(pool, logger, marketClient)
     handler.RegisterRoutes(r)
 
     port := viper.GetInt("HTTP_PORT")

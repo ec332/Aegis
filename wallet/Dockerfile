@@ -21,8 +21,8 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/wallet/wallet .
 
-# Expose ports
-EXPOSE 8082 50052
+# Expose gRPC port only
+EXPOSE 50052
 
 # Run the binary
 CMD ["./wallet"]

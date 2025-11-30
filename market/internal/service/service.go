@@ -245,7 +245,10 @@ func (s *Service) GetMarketPrices(ctx context.Context, marketID string) (map[str
         orderedQuantities[i] = quantityMap[option.ID]
     }
 
-    const b = 100.0
+    b := market.LiquidityParameter
+    if b <= 0 {
+        b = 100.0 // fallback
+    }
     prices := make(map[string]float64)
     for i, option := range market.Options {
         prices[option.ID] = calculatePrice(orderedQuantities, b, i)
@@ -279,8 +282,11 @@ func (s *Service) CalculateBuyCost(ctx context.Context, marketID, optionID strin
 		return 0, fmt.Errorf("option not found in market")
 	}
 
-    const bBuy = 100.0
-    return calculateCostToBuy(orderedQuantities, bBuy, optionIndex, amount), nil
+    b := market.LiquidityParameter
+    if b <= 0 {
+        b = 100.0 // fallback
+    }
+    return calculateCostToBuy(orderedQuantities, b, optionIndex, amount), nil
 }
 
 // CalculateSellCost calculates the return from selling a specific amount of shares for an option
@@ -308,8 +314,11 @@ func (s *Service) CalculateSellCost(ctx context.Context, marketID, optionID stri
 		return 0, fmt.Errorf("option not found in market")
 	}
 
-    const bSell = 100.0
-    return calculateCostToSell(orderedQuantities, bSell, optionIndex, amount), nil
+    b := market.LiquidityParameter
+    if b <= 0 {
+        b = 100.0 // fallback
+    }
+    return calculateCostToSell(orderedQuantities, b, optionIndex, amount), nil
 }
 
 // Helper functions

@@ -12,6 +12,7 @@ services:
       - ./market/sql/create.sql:/docker-entrypoint-initdb.d/02_create_market.sql:ro
       - ./wallet/sql/create.sql:/docker-entrypoint-initdb.d/03_create_wallet.sql:ro
       - ./settlement/sql/create.sql:/docker-entrypoint-initdb.d/04_create_settlement.sql:ro
+      - ./transaction-service/create.sql:/docker-entrypoint-initdb.d/05_create_transactions.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -70,20 +71,24 @@ services:
     ports:
       - "8080:8080"
 
+  # transaction-service removed (legacy HTTP-only service not used by API Gateway)
   transaction-service:
     build:
       context: .
       dockerfile: transaction-service/Dockerfile
     environment:
+      APP_HTTP_PORT: 5555
       APP_DB_HOST: postgres
       APP_DB_PORT: 5432
-      APP_DB_NAME: transaction
+      APP_DB_NAME: postgres
       APP_DB_USER: postgres
       APP_DB_PASSWORD: postgres
-      APP_HTTP_PORT: 5555
+      APP_MARKET_GRPC_ADDR: market-service:50051
     depends_on:
       postgres:
         condition: service_healthy
+      market-service:
+        condition: service_started
     ports:
       - "5555:5555"
 
@@ -101,7 +106,6 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8081:8081"  # HTTP port
       - "50051:50051" # gRPC port
 
   redis:
@@ -125,11 +129,11 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       GRPC_PORT: 50053
+      WALLET_GRPC_ADDR: wallet-service:50052
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8084:8084"  # HTTP port
       - "50053:50053" # gRPC port
 
   wallet-service:
@@ -147,7 +151,6 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8082:8082"  # HTTP port
       - "50052:50052" # gRPC port
 
 volumes:

@@ -22,8 +22,8 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/market/market-grpc .
 
-# Expose ports
-EXPOSE 8081 50051
+# Expose gRPC port only
+EXPOSE 50051
 
 # Run the binary
 CMD ["./market-grpc"]
