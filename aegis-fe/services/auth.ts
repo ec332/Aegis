@@ -104,3 +104,32 @@ export async function startWeb3Login(): Promise<{ token: string; profile: UserPr
   const profile = await loadProfile();
   return { token, profile, wallet };
 }
+
+export async function devLogin(wallet?: string): Promise<{ token: string; profile: UserProfile | null; wallet: string }>
+{
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  // Prefer /api/auth/dev-login, fallback to /auth/dev-login
+  const tryPaths = ["/api/auth/dev-login", "/auth/dev-login"];
+  let lastErr: any = null;
+  for (const p of tryPaths) {
+    try {
+      const res = await fetch(`${API_BASE_URL}${p}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet }),
+      });
+      if (!res.ok) {
+        lastErr = new Error(`Dev login failed: ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const token = data.token as string;
+      localStorage.setItem("aegis.jwt", token);
+      const profile = await loadProfile();
+      return { token, profile, wallet: wallet || "0xTESTUSER" };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw (lastErr || new Error("Dev login failed"));
+}

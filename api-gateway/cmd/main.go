@@ -774,6 +774,8 @@ func main() {
 	router.HandleFunc("/user/verify", gateway.handleUserRequest).Methods("POST")
 	router.HandleFunc("/auth/nonce", gateway.handleUserRequest).Methods("POST")
 	router.HandleFunc("/auth/verify", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/auth/dev-login", gateway.devLogin).Methods("POST")
+	router.HandleFunc("/api/auth/dev-login", gateway.devLogin).Methods("POST")
 	router.HandleFunc("/auth/me", gateway.handleUserRequest).Methods("GET")
 
 	// Settlement routes
@@ -892,6 +894,45 @@ func (g *APIGateway) me(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return
 	}
 	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// POST /auth/dev-login { wallet?: string }
+// Issues a JWT for development without signature verification
+func (g *APIGateway) devLogin(w http.ResponseWriter, r *http.Request) {
+    enabled := strings.EqualFold(strings.TrimSpace(getEnv("AUTH_DEV_LOGIN_ENABLED", "true")), "true")
+    if !enabled {
+        http.Error(w, "dev login disabled", http.StatusForbidden)
+        return
+    }
+    var body struct{ Wallet string `json:"wallet"` }
+    _ = json.NewDecoder(r.Body).Decode(&body)
+    walletAddr := strings.TrimSpace(body.Wallet)
+    if walletAddr == "" {
+        walletAddr = strings.TrimSpace(getEnv("AUTH_DEV_LOGIN_WALLET", "0xTESTUSER"))
+    }
+    if walletAddr == "" {
+        http.Error(w, "wallet required", http.StatusBadRequest)
+        return
+    }
+
+    // Ensure user exists in wallet service by requesting a nonce (creates user if missing)
+    ctx := r.Context()
+    _, _ = g.walletStub.RequestNonce(ctx, &wallet.RequestNonceRequest{Wallet: walletAddr})
+
+    secret := strings.TrimSpace(getEnv("AUTH_JWT_SECRET", "dev-secret"))
+    claims := jwt.MapClaims{
+        "wallet": walletAddr,
+        "exp":    time.Now().Add(24 * time.Hour).Unix(),
+    }
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+    tokenString, err := token.SignedString([]byte(secret))
+    if err != nil {
+        http.Error(w, "failed to issue token", http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
 }
 
 // Minimal JWT parsing for HS256 to get wallet claim

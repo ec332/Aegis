@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 
 export default function Navbar() {
-  const { isAuthenticated, profile, wallet, signIn, signOut, initAuth, isLoading } = useAuthStore();
+  const { isAuthenticated, profile, wallet, signOut, initAuth } = useAuthStore();
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     initAuth();
   }, [initAuth]);
 
-  const handleSignIn = async () => {
-    await signIn();
+  const handleSignIn = () => {
+    router.push("/signin");
   };
 
   const handleToggleProfile = () => setOpen((o) => !o);
@@ -31,15 +34,18 @@ export default function Navbar() {
             <Link href="/" className="flex items-center">
               <span className="text-xl font-bold text-black">Aegis</span>
             </Link>
-            <Link href="/transactions" className="text-sm text-gray-700 hover:text-[#151b4d] transition-colors">Transactions</Link>
+            {isAuthenticated && (
+              <Link href="/transactions" className="text-sm text-gray-700 hover:text-[#151b4d] transition-colors">Transactions</Link>
+            )}
           </div>
 
           <div className="relative">
-            {!isAuthenticated ? (
-              <button onClick={handleSignIn} disabled={isLoading} className="px-4 py-2 bg-[#151b4d] text-white rounded-md hover:bg-[#1a2159] transition-colors">
-                {isLoading ? "Signing In..." : "Sign In"}
+            {!isAuthenticated && pathname !== "/signin" && (
+              <button type="button" onClick={handleSignIn} className="px-4 py-2 bg-[#151b4d] text-white rounded-md hover:bg-[#1a2159] transition-colors cursor-pointer">
+                Sign In
               </button>
-            ) : (
+            )}
+            {isAuthenticated && pathname !== "/signin" && (
               <>
                 <button onClick={handleToggleProfile} className="px-4 py-2 bg-[#151b4d] text-white rounded-md hover:bg-[#1a2159] transition-colors">
                   Profile
