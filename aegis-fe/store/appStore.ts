@@ -1,13 +1,14 @@
 import { create } from "zustand";
-import { 
-  Market, 
-  Option, 
-  Transaction, 
-  WalletAccount, 
-  WalletTransaction, 
+import {
+  Market,
+  Option,
+  Transaction,
+  WalletAccount,
+  WalletTransaction,
   Settlement,
-  APIError 
+  APIError
 } from "@/types";
+import { DEFAULT_USER_ID } from "@/constants";
 import {
   fetchMarkets,
   fetchMarketById,
@@ -28,29 +29,29 @@ interface AppState {
   // Markets
   markets: Market[];
   marketOptions: { [key: string]: Option[] };
-  
+
   // Wallet
   walletAccounts: WalletAccount[];
   walletTransactions: WalletTransaction[];
   currentWallet: WalletAccount | null;
-  
+
   // Settlements
   settlements: Settlement[];
-  
+
   // Legacy transactions
   transactions: Transaction[];
-  
+
   // Loading states
   isLoadingMarkets: boolean;
   isLoadingOptions: boolean;
   isLoadingTransactions: boolean;
   isLoadingWallet: boolean;
   isLoadingSettlements: boolean;
-  
+
   // Error states
   error: APIError | null;
   isBackendHealthy: boolean;
-  
+
   // Actions
   initializeApp: () => Promise<void>;
   loadMarkets: () => Promise<void>;
@@ -59,24 +60,24 @@ interface AppState {
   updateMarket: (id: string, updates: Partial<Market>) => Promise<Market>;
   loadOptionsForMarket: (marketId: string) => Promise<void>;
   loadTransactions: () => Promise<void>;
-  
+
   // Wallet actions
   createWallet: (userId: string, currency?: string) => Promise<WalletAccount>;
   loadWallet: (walletId: string) => Promise<WalletAccount | null>;
   loadCurrentUserWallet: (userId: string) => Promise<void>;
   depositFunds: (walletId: string, amount: number, referenceId?: string) => Promise<WalletTransaction>;
   withdrawFunds: (walletId: string, amount: number, referenceId?: string) => Promise<WalletTransaction>;
-  
+
   // Settlement actions
   createSettlement: (marketId: string, winningOptionId: string) => Promise<Settlement>;
   loadSettlement: (settlementId: string) => Promise<Settlement | null>;
   completeSettlement: (settlementId: string) => Promise<Settlement>;
-  
+
   // Legacy actions
   addTransaction: (transaction: Omit<Transaction, "id">) => Promise<void>;
   removeTransaction: (transactionId: string) => Promise<void>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
-  
+
   // Utility actions
   clearError: () => void;
   checkBackendHealth: () => Promise<void>;
@@ -106,24 +107,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       isLoadingTransactions: true,
       isLoadingOptions: true,
     });
-    
+
     try {
       // Check backend health first
       await get().checkBackendHealth();
-      
+
+      // Load current user wallet
+      await get().loadCurrentUserWallet(DEFAULT_USER_ID);
+
       const [markets] = await Promise.all([
         fetchMarkets(),
       ]);
-      
+
       // Load options for all markets
       const marketOptionsMap: { [key: string]: Option[] } = {};
       const optionsPromises = markets.map(async (market) => {
         const options = await fetchOptionsByMarketId(market.id);
         marketOptionsMap[market.id] = options;
       });
-      
+
       await Promise.all(optionsPromises);
-      
+
       set({
         markets,
         marketOptions: marketOptionsMap,
@@ -149,9 +153,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ markets, isLoadingMarkets: false });
     } catch (error) {
       console.error("Error loading markets:", error);
-      set({ 
+      set({
         error: error as APIError,
-        isLoadingMarkets: false 
+        isLoadingMarkets: false
       });
     }
   },
@@ -213,9 +217,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
     } catch (error) {
       console.error(`Error loading options for market ${marketId}:`, error);
-      set({ 
+      set({
         error: error as APIError,
-        isLoadingOptions: false 
+        isLoadingOptions: false
       });
     }
   },
@@ -227,9 +231,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoadingTransactions: false });
     } catch (error) {
       console.error("Error loading transactions:", error);
-      set({ 
+      set({
         error: error as APIError,
-        isLoadingTransactions: false 
+        isLoadingTransactions: false
       });
     }
   },
@@ -254,7 +258,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const wallet = await apiGetWallet(walletId);
       if (wallet) {
         set((state) => ({
-          walletAccounts: state.walletAccounts.map(w => w.id === walletId ? wallet : w)
+          walletAccounts: state.walletAccounts.map(w => w.id === walletId ? wallet : w),
+          currentWallet: state.currentWallet?.id === walletId ? wallet : state.currentWallet
         }));
       }
       return wallet;
@@ -271,15 +276,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       // For now, create a wallet if one doesn't exist
       // In a real app, you'd fetch the user's existing wallet
       const wallet = await apiCreateWallet(userId);
-      set({ 
+      set({
         currentWallet: wallet,
-        isLoadingWallet: false 
+        isLoadingWallet: false
       });
     } catch (error) {
       console.error(`Error loading user wallet for ${userId}:`, error);
-      set({ 
+      set({
         error: error as APIError,
-        isLoadingWallet: false 
+        isLoadingWallet: false
       });
     }
   },
@@ -290,6 +295,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         walletTransactions: [...state.walletTransactions, transaction]
       }));
+      // Reload wallet to get updated balance
+      await get().loadWallet(walletId);
       return transaction;
     } catch (error) {
       console.error(`Error depositing to wallet ${walletId}:`, error);
@@ -304,6 +311,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         walletTransactions: [...state.walletTransactions, transaction]
       }));
+      // Reload wallet to get updated balance
+      await get().loadWallet(walletId);
       return transaction;
     } catch (error) {
       console.error(`Error withdrawing from wallet ${walletId}:`, error);

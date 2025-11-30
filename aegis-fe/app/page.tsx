@@ -5,6 +5,7 @@ import TradeModal from "@/components/TradeModal";
 import WalletManager from "@/components/WalletManager";
 import { useAppStore } from "@/store/appStore";
 import { Market, Option } from "@/types";
+import { DEFAULT_USER_ID } from "@/constants";
 import { useEffect, useState } from "react";
 
 export default function Home() {
@@ -54,21 +55,19 @@ export default function Home() {
             <nav className="-mb-px flex space-x-8">
               <button
                 onClick={() => setActiveTab('markets')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'markets'
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'markets'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
+                  }`}
               >
                 Markets
               </button>
               <button
                 onClick={() => setActiveTab('wallet')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'wallet'
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'wallet'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
+                  }`}
               >
                 Wallet
               </button>
@@ -106,7 +105,7 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-[#151b4d] mb-8">
               Wallet Management
             </h2>
-            <WalletManager userId="demo-user" />
+            <WalletManager userId={DEFAULT_USER_ID} />
           </div>
         )}
 
