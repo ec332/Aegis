@@ -5,7 +5,7 @@ import TradeModal from "@/components/TradeModal";
 import { useAppStore } from "@/store";
 import { Transaction, Market, Option } from "@/types";
 import { useEffect, useState } from "react";
-import { fetchMarketById, fetchOptionById } from "@/services/api";
+import { fetchMarketById, fetchOptionByMarketId } from "@/services/api";
 
 export default function TransactionsPage() {
   const { transactions, loadTransactions, removeTransaction } = useAppStore();
