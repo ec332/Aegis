@@ -144,7 +144,7 @@ func (s *Server) ListMarkets(ctx context.Context, req *market.ListMarketsRequest
 	}, nil
 }
 
-// GetMarketOptions retrieves options for a market
+// GetMarketOptions retrieves options for a market with current LMSR prices
 func (s *Server) GetMarketOptions(ctx context.Context, req *market.GetMarketOptionsRequest) (*market.GetMarketOptionsResponse, error) {
 	if req.MarketId == "" {
 		return nil, status.Error(codes.InvalidArgument, "market_id is required")
@@ -162,9 +162,20 @@ func (s *Server) GetMarketOptions(ctx context.Context, req *market.GetMarketOpti
 		return nil, status.Error(codes.NotFound, "market not found")
 	}
 
+	// Get current prices using LMSR
+	prices, err := s.service.GetMarketPrices(ctx, req.MarketId)
+	if err != nil {
+		s.logger.Error("failed to get market prices", 
+			zap.String("market_id", req.MarketId), 
+			zap.Error(err))
+		return nil, status.Error(codes.Internal, "failed to get market prices")
+	}
+
 	protoOptions := make([]*market.Option, len(marketModel.Options))
 	for i, option := range marketModel.Options {
-		protoOptions[i] = convertOptionToProto(&option)
+		protoOpt := convertOptionToProto(&option)
+		protoOpt.CurrentPrice = prices[option.ID]
+		protoOptions[i] = protoOpt
 	}
 
 	return &market.GetMarketOptionsResponse{

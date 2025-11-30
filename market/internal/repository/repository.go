@@ -209,6 +209,70 @@ func (r *Repository) UpdateMarket(ctx context.Context, marketID string, updates 
 	return nil
 }
 
+// GetPositionsByMarketAndOption retrieves all positions for a market option
+func (r *Repository) GetPositionsByMarketAndOption(ctx context.Context, marketID, optionID string) ([]models.Position, error) {
+	query := `
+		SELECT id, market_id, option_id, user_id, shares, created_at, updated_at
+		FROM positions
+		WHERE market_id = $1 AND option_id = $2
+	`
+	rows, err := r.db.QueryContext(ctx, query, marketID, optionID)
+	if err != nil {
+		return nil, fmt.Errorf("query positions: %w", err)
+	}
+	defer rows.Close()
+
+	positions := []models.Position{}
+	for rows.Next() {
+		pos := models.Position{}
+		err := rows.Scan(
+			&pos.ID, &pos.MarketID, &pos.OptionID, &pos.UserID, &pos.Shares,
+			&pos.CreatedAt, &pos.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan position: %w", err)
+		}
+		positions = append(positions, pos)
+	}
+	return positions, nil
+}
+
+// GetPosition retrieves a specific position
+func (r *Repository) GetPosition(ctx context.Context, marketID, optionID, userID string) (*models.Position, error) {
+	query := `
+		SELECT id, market_id, option_id, user_id, shares, created_at, updated_at
+		FROM positions
+		WHERE market_id = $1 AND option_id = $2 AND user_id = $3
+	`
+	pos := &models.Position{}
+	err := r.db.QueryRowContext(ctx, query, marketID, optionID, userID).Scan(
+		&pos.ID, &pos.MarketID, &pos.OptionID, &pos.UserID, &pos.Shares,
+		&pos.CreatedAt, &pos.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("position not found")
+		}
+		return nil, fmt.Errorf("query position: %w", err)
+	}
+	return pos, nil
+}
+
+// UpdatePosition updates or inserts a position (upsert)
+func (r *Repository) UpdatePosition(ctx context.Context, marketID, optionID, userID string, shares float64) error {
+	query := `
+		INSERT INTO positions (id, market_id, option_id, user_id, shares, created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
+		ON CONFLICT (market_id, option_id, user_id)
+		DO UPDATE SET shares = positions.shares + $4, updated_at = NOW()
+	`
+	_, err := r.db.ExecContext(ctx, query, marketID, optionID, userID, shares)
+	if err != nil {
+		return fmt.Errorf("upsert position: %w", err)
+	}
+	return nil
+}
+
 // CreateUser creates a new user
 func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
 	query := `
@@ -438,6 +502,21 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 
 	CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address);
 	CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
+	CREATE TABLE IF NOT EXISTS positions (
+		id UUID PRIMARY KEY,
+		market_id UUID NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+		option_id UUID NOT NULL REFERENCES options(id) ON DELETE CASCADE,
+		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		shares DECIMAL(20, 8) NOT NULL DEFAULT 0,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		UNIQUE(market_id, option_id, user_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_positions_market_id ON positions(market_id);
+	CREATE INDEX IF NOT EXISTS idx_positions_option_id ON positions(option_id);
+	CREATE INDEX IF NOT EXISTS idx_positions_user_id ON positions(user_id);
 	`
 
 	_, err := r.db.ExecContext(ctx, schema)

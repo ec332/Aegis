@@ -3,6 +3,8 @@ package http
 import (
     "context"
     "encoding/json"
+    "fmt"
+    "math"
     "net/http"
     "time"
 
@@ -11,17 +13,23 @@ import (
     "github.com/jackc/pgx/v5/pgxpool"
     "go.uber.org/zap"
 
+    "github.com/aegis/proto/market"
     "transaction-service/internal/model"
     "transaction-service/internal/service"
     storeiface "transaction-service/internal/store"
     storepg "transaction-service/internal/store/postgres"
 )
 
-type Handler struct { svc *service.TransactionService; logger *zap.Logger }
+type Handler struct { svc *service.TransactionService; logger *zap.Logger; marketClient market.MarketServiceClient }
 
 func New(pool *pgxpool.Pool, logger *zap.Logger) *Handler {
     repo := storepg.New(pool)
     return &Handler{svc: service.NewTransactionService(repo), logger: logger}
+}
+
+func NewWithMarketClient(pool *pgxpool.Pool, logger *zap.Logger, marketClient market.MarketServiceClient) *Handler {
+    repo := storepg.New(pool)
+    return &Handler{svc: service.NewTransactionService(repo), logger: logger, marketClient: marketClient}
 }
 
 func NewWithRepo(repo storeiface.Repository, logger *zap.Logger) *Handler {
@@ -77,6 +85,53 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
         writeError(w, http.StatusBadRequest, err)
         return
     }
+
+    if h.marketClient != nil {
+        marketID := body.MarketID
+        ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+        defer cancel()
+
+        marketResp, err := h.marketClient.GetMarket(ctx, &market.GetMarketRequest{Id: marketID})
+        if err != nil {
+            h.logger.Error("failed to get market status", zap.String("market_id", marketID), zap.Error(err))
+            writeError(w, http.StatusServiceUnavailable, fmt.Errorf("market service unavailable"))
+            return
+        }
+
+        if marketResp.Market.Status != "active" {
+            writeError(w, http.StatusBadRequest, fmt.Errorf("market is not active (current status: %s)", marketResp.Market.Status))
+            return
+        }
+
+        optsResp, err := h.marketClient.GetMarketOptions(ctx, &market.GetMarketOptionsRequest{MarketId: marketID})
+        if err != nil {
+            h.logger.Error("failed to get market options", zap.String("market_id", marketID), zap.Error(err))
+            writeError(w, http.StatusServiceUnavailable, fmt.Errorf("market service unavailable"))
+            return
+        }
+
+        var currentPrice float64
+        found := false
+        for _, opt := range optsResp.Options {
+            if opt.Id == body.OptionID {
+                currentPrice = opt.CurrentPrice
+                found = true
+                break
+            }
+        }
+        if !found {
+            writeError(w, http.StatusBadRequest, fmt.Errorf("option does not belong to market"))
+            return
+        }
+
+        price := service.MustDecimalFromString(body.PricePerShare).InexactFloat64()
+        tol := 0.02
+        if math.Abs(price-currentPrice) > currentPrice*tol {
+            writeError(w, http.StatusBadRequest, fmt.Errorf("price_per_share deviates from current price"))
+            return
+        }
+    }
+
     t := model.Transaction{
         UserID:          uuid.MustParse(body.UserID),
         MarketID:        uuid.MustParse(body.MarketID),
@@ -116,6 +171,51 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
     var createdAt time.Time
     if body.CreatedAt != nil {
         createdAt = *body.CreatedAt
+    }
+    if h.marketClient != nil {
+        marketID := body.MarketID
+        ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+        defer cancel()
+
+        marketResp, err := h.marketClient.GetMarket(ctx, &market.GetMarketRequest{Id: marketID})
+        if err != nil {
+            h.logger.Error("failed to get market status", zap.String("market_id", marketID), zap.Error(err))
+            writeError(w, http.StatusServiceUnavailable, fmt.Errorf("market service unavailable"))
+            return
+        }
+
+        if marketResp.Market.Status != "active" {
+            writeError(w, http.StatusBadRequest, fmt.Errorf("market is not active (current status: %s)", marketResp.Market.Status))
+            return
+        }
+
+        optsResp, err := h.marketClient.GetMarketOptions(ctx, &market.GetMarketOptionsRequest{MarketId: marketID})
+        if err != nil {
+            h.logger.Error("failed to get market options", zap.String("market_id", marketID), zap.Error(err))
+            writeError(w, http.StatusServiceUnavailable, fmt.Errorf("market service unavailable"))
+            return
+        }
+
+        var currentPrice float64
+        found := false
+        for _, opt := range optsResp.Options {
+            if opt.Id == body.OptionID {
+                currentPrice = opt.CurrentPrice
+                found = true
+                break
+            }
+        }
+        if !found {
+            writeError(w, http.StatusBadRequest, fmt.Errorf("option does not belong to market"))
+            return
+        }
+
+        price := service.MustDecimalFromString(body.PricePerShare).InexactFloat64()
+        tol := 0.02
+        if math.Abs(price-currentPrice) > currentPrice*tol {
+            writeError(w, http.StatusBadRequest, fmt.Errorf("price_per_share deviates from current price"))
+            return
+        }
     }
     t := model.Transaction{
         UserID:          uuid.MustParse(body.UserID),

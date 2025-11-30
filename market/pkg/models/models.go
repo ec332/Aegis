@@ -114,6 +114,17 @@ type ErrorResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
+// Position represents a user's holdings in a market option
+type Position struct {
+	ID        string    `json:"id"`
+	MarketID  string    `json:"market_id"`
+	OptionID  string    `json:"option_id"`
+	UserID    string    `json:"user_id"`
+	Shares    float64   `json:"shares"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // CostCalculationRequest represents the payload for calculating buy/sell costs
 type CostCalculationRequest struct {
 	Amount float64 `json:"amount"`
