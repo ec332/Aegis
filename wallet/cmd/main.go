@@ -35,6 +35,15 @@ func NewWalletGRPCServer(logger *zap.Logger) *WalletGRPCServer {
 }
 
 func (s *WalletGRPCServer) CreateWalletAccount(ctx context.Context, req *wallet.CreateWalletAccountRequest) (*wallet.CreateWalletAccountResponse, error) {
+	// Check if wallet already exists for this user
+	for _, acc := range s.accounts {
+		if acc.UserId == req.UserId && acc.Currency == req.Currency {
+			s.logger.Info("Wallet already exists for user", zap.String("user_id", req.UserId), zap.String("wallet_id", acc.Id))
+			return &wallet.CreateWalletAccountResponse{Account: acc}, nil
+		}
+	}
+
+	// Create new wallet if none exists
 	id := fmt.Sprintf("w-%d", time.Now().UnixNano())
 	acc := &wallet.WalletAccount{
 		Id:               id,
@@ -48,6 +57,7 @@ func (s *WalletGRPCServer) CreateWalletAccount(ctx context.Context, req *wallet.
 		UpdatedAt:        timestamppb.Now(),
 	}
 	s.accounts[id] = acc
+	s.logger.Info("Created new wallet", zap.String("user_id", req.UserId), zap.String("wallet_id", id))
 	return &wallet.CreateWalletAccountResponse{Account: acc}, nil
 }
 
