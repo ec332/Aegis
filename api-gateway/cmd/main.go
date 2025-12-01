@@ -629,11 +629,11 @@ func (g *APIGateway) completeSettlement(ctx context.Context, w http.ResponseWrit
 }
 
 func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter, err error, service, method string) {
-	g.logger.Error("gRPC call failed",
-		zap.String("service", service),
-		zap.String("method", method),
-		zap.Error(err),
-	)
+    g.logger.Error("gRPC call failed",
+        zap.String("service", service),
+        zap.String("method", method),
+        zap.Error(err),
+    )
 
 	// Check if this was a circuit breaker or timeout error that triggered Kafka fallback
 	if strings.Contains(err.Error(), "circuit breaker open") || strings.Contains(err.Error(), "timeout") {
@@ -663,12 +663,12 @@ func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter,
 		return
 	}
 
-	// Convert gRPC error to HTTP status
-	status := http.StatusInternalServerError
-	if strings.Contains(err.Error(), "Unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "authorization required") || strings.Contains(strings.ToLower(err.Error()), "invalid token") {
-		status = http.StatusUnauthorized
-	} else if strings.Contains(err.Error(), "not found") {
-		status = http.StatusNotFound
+    // Convert gRPC error to HTTP status
+    status := http.StatusInternalServerError
+    if strings.Contains(err.Error(), "Unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "authorization required") || strings.Contains(strings.ToLower(err.Error()), "invalid token") {
+        status = http.StatusUnauthorized
+    } else if strings.Contains(err.Error(), "not found") {
+        status = http.StatusNotFound
 	} else if strings.Contains(err.Error(), "invalid") {
 		status = http.StatusBadRequest
 	}

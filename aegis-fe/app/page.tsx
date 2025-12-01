@@ -31,6 +31,17 @@ export default function Home() {
     }
   }, [isAuthenticated, activeTab]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const tab = sp.get("tab");
+    if (tab === "wallet" && isAuthenticated) {
+      setActiveTab("wallet");
+    } else if (tab === "markets") {
+      setActiveTab("markets");
+    }
+  }, [isAuthenticated]);
+
   const handleOptionClick = async (option: Option) => {
     const market = markets.find((m) => m.id === option.market_id);
     if (market) {
@@ -62,34 +73,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="mb-8">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab("markets")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "markets"
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                Markets
-              </button>
-              {isAuthenticated && (
-                <button
-                  onClick={() => setActiveTab("wallet")}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === "wallet"
-                      ? "border-blue-500 text-blue-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  Wallet
-                </button>
-              )}
-            </nav>
-          </div>
-        </div>
+        <div className="mb-6" />
 
         {activeTab === "markets" && (
           <div>

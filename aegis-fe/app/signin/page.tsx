@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { devLogin } from "@/services/auth";
+import { DEFAULT_USER_ID } from "@/constants";
 
 export default function SignInPage() {
   const { isAuthenticated, isLoading, error, signIn } = useAuthStore();
@@ -17,11 +18,16 @@ export default function SignInPage() {
 
   const handleConnect = async () => {
     try {
-      const { token, profile, wallet } = await devLogin("0xTESTUSER");
-      useAuthStore.setState({ isAuthenticated: !!token, token, wallet, profile, isLoading: false, error: null });
+      const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.endsWith(".local"));
+      if (isLocal || process.env.NODE_ENV !== "production") {
+        const { token, profile, wallet } = await devLogin(DEFAULT_USER_ID);
+        useAuthStore.setState({ isAuthenticated: !!token, token, wallet, profile, isLoading: false, error: null });
+      } else {
+        await signIn();
+      }
       router.replace("/?tab=wallet");
     } catch (e: any) {
-      useAuthStore.setState({ error: e?.message || "Dev login failed", isLoading: false });
+      useAuthStore.setState({ error: e?.message || "Sign-in failed", isLoading: false });
     }
   };
 

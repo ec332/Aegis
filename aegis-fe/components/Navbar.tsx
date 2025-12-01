@@ -54,8 +54,12 @@ export default function Navbar() {
             <Link href="/" className="flex items-center">
               <span className="text-xl font-bold text-black">Aegis</span>
             </Link>
+            <Link href="/markets" className="text-sm text-gray-700 hover:text-[#151b4d] transition-colors">Markets</Link>
             {isAuthenticated && (
               <Link href="/transactions" className="text-sm text-gray-700 hover:text-[#151b4d] transition-colors">Transactions</Link>
+            )}
+            {isAuthenticated && (
+              <Link href="/wallet" className="text-sm text-gray-700 hover:text-[#151b4d] transition-colors">Wallet</Link>
             )}
           </div>
 
@@ -71,14 +75,16 @@ export default function Navbar() {
                   Profile
                 </button>
                 {open && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-md shadow-lg p-4">
-                    <div className="text-sm text-gray-800">
-                      <div className="font-semibold mb-2">User Profile</div>
-                      <div className="mb-1"><span className="font-medium">Wallet:</span> {wallet}</div>
-                      <div className="mb-1"><span className="font-medium">Role:</span> {profile?.role}</div>
-                      <div className="mb-1"><span className="font-medium">Balance:</span> {profile?.balance}</div>
-                      <div className="mb-1"><span className="font-medium">Created:</span> {fmtTs(profile?.created_at)}</div>
-                      <div className="mb-1"><span className="font-medium">Last Login:</span> {fmtTs(profile?.last_login)}</div>
+                  <>
+                    <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-md shadow-lg p-4">
+                      <div className="text-sm text-gray-800">
+                        <div className="font-semibold mb-2">User Profile</div>
+                        <div className="mb-1"><span className="font-medium">Wallet:</span> {wallet}</div>
+                        <div className="mb-1"><span className="font-medium">Role:</span> {profile?.role}</div>
+                        <div className="mb-1"><span className="font-medium">Balance:</span> {profile?.balance}</div>
+                        <div className="mb-1"><span className="font-medium">Created:</span> {fmtTs(profile?.created_at)}</div>
+                        <div className="mb-1"><span className="font-medium">Last Login:</span> {fmtTs(profile?.last_login)}</div>
+                      </div>
                     </div>
                     <div className="sm:hidden fixed inset-0 z-50 bg-black/40 p-4">
                       <div className="mt-auto w-full rounded-t-xl bg-white p-4 max-h-[85vh] overflow-y-auto">
