@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 
 export default function Home() {
-  const { markets, marketOptions, initializeApp, loadOptionsForMarket, isBackendHealthy } =
+  const { markets, marketOptions, loadOptionsForMarket, isBackendHealthy } =
     useAppStore();
   const { isAuthenticated, profile } = useAuthStore();
   const [selectedMarket, setSelectedMarket] = useState<{
@@ -22,8 +22,8 @@ export default function Home() {
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   useEffect(() => {
-    initializeApp();
-  }, [initializeApp]);
+    // No-op: app initialization is handled globally by AppInitializer
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated && activeTab === "wallet") {
@@ -140,8 +140,8 @@ export default function Home() {
         )}
 
         {isFormOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-            <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-2 sm:px-4">
+            <div className="relative w-full max-w-[640px] sm:max-w-lg rounded-2xl bg-white p-4 sm:p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-xl font-semibold text-[#151b4d]">Create Market</h3>
                 <button

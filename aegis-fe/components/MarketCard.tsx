@@ -19,10 +19,10 @@ export default function MarketCard({
   const badgeText = market.description || market.status;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-md p-4 sm:p-6 lg:p-8 hover:shadow-lg transition-shadow">
       {/* Market Title (Center) */}
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-[#151b4d] mb-2">
+      <div className="text-center mb-4 sm:mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-[#151b4d] mb-2">
           {marketTitle}
         </h2>
         <p className="text-sm text-gray-600 mb-3">{market.description}</p>
@@ -48,7 +48,7 @@ export default function MarketCard({
             }`}
           >
               <div className="flex flex-col">
-                <span className="text-lg font-semibold">{label}</span>
+                <span className="text-base sm:text-lg font-semibold">{label}</span>
                 <span className="text-xs text-white/80">{price}</span>
               </div>
           </button>

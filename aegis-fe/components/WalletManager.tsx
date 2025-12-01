@@ -99,7 +99,7 @@ export default function WalletManager({ userId }: { userId: string }) {
         
         {currentWallet ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-blue-50 p-4 rounded-lg">
                 <p className="text-sm text-blue-600 font-medium">Total Balance</p>
                 <p className="text-2xl font-bold text-blue-900">

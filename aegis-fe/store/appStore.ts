@@ -53,6 +53,7 @@ interface AppState {
   // Error states
   error: APIError | null;
   isBackendHealthy: boolean;
+  initialized: boolean;
 
   // Actions
   initializeApp: () => Promise<void>;
@@ -103,20 +104,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLoadingSettlements: false,
   error: null,
   isBackendHealthy: false,
+  initialized: false,
 
   // Actions
   initializeApp: async () => {
+    if (get().initialized) return;
     set({
       isLoadingMarkets: true,
       isLoadingTransactions: true,
       isLoadingOptions: true,
+      initialized: true,
     });
 
     try {
       // Check backend health first
       await get().checkBackendHealth();
 
-      
+      // Skip auto wallet creation during startup to avoid 500s when wallet service is not available.
 
       const [markets] = await Promise.all([
         fetchMarkets(),
