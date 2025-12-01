@@ -233,6 +233,17 @@ export async function getWallet(walletId: string): Promise<WalletAccount | null>
   }
 }
 
+export async function getWalletByUserId(userId: string): Promise<WalletAccount | null> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets/user/${userId}`);
+    const data = await handleResponse<{ account: WalletAccount }>(response);
+    return data.account || null;
+  } catch (error) {
+    console.error(`Error fetching wallet by user ${userId}:`, error);
+    return null;
+  }
+}
+
 export async function deposit(walletId: string, amount: number, referenceId?: string): Promise<WalletTransaction> {
   try {
     const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets/${walletId}/deposit`, {

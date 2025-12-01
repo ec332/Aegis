@@ -25,7 +25,7 @@ import {
   checkHealth,
   fetchUserTransactions,
 } from "@/services/api";
-import { fetchWalletTransactions } from "@/services/api";
+import { fetchWalletTransactions, getWalletByUserId } from "@/services/api";
 
 interface AppState {
   // Markets
@@ -294,13 +294,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadCurrentUserWallet: async (userId: string) => {
     set({ isLoadingWallet: true });
     try {
-      // For now, create a wallet if one doesn't exist
-      // In a real app, you'd fetch the user's existing wallet
+      const existing = await getWalletByUserId(userId);
+      if (existing) {
+        set({ currentWallet: existing, isLoadingWallet: false });
+        await get().loadWalletTransactions(existing.id);
+        return;
+      }
       const wallet = await apiCreateWallet(userId);
-      set({
-        currentWallet: wallet,
-        isLoadingWallet: false
-      });
+      set({ currentWallet: wallet, isLoadingWallet: false });
       await get().loadWalletTransactions(wallet.id);
     } catch (error) {
       console.error(`Error loading user wallet for ${userId}:`, error);

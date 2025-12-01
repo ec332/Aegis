@@ -254,6 +254,8 @@ func (g *APIGateway) handleWalletRequest(w http.ResponseWriter, r *http.Request)
     case method == "GET" && strings.Contains(path, "/wallets/"):
         if strings.HasSuffix(path, "/transactions") {
             g.getWalletTransactions(ctx, w, r)
+        } else if strings.Contains(path, "/wallets/user/") {
+            g.getWalletByUserID(ctx, w, r)
         } else {
             g.getWallet(ctx, w, r)
         }
@@ -345,6 +347,34 @@ func (g *APIGateway) getWallet(ctx context.Context, w http.ResponseWriter, r *ht
 	}
 
 	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+func (g *APIGateway) getWalletByUserID(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    parts := strings.Split(r.URL.Path, "/")
+    var userID string
+    for i, p := range parts {
+        if p == "user" && i+1 < len(parts) {
+            userID = parts[i+1]
+            break
+        }
+    }
+    if strings.TrimSpace(userID) == "" {
+        http.Error(w, "User ID required", http.StatusBadRequest)
+        return
+    }
+    req := &wallet.GetWalletAccountByUserIDRequest{UserId: userID}
+    ctx = g.withAuth(ctx, r)
+    resp, err := g.walletStub.GetWalletAccountByUserID(ctx, req)
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "wallet", "GetWalletAccountByUserID")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 func (g *APIGateway) deposit(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -799,12 +829,13 @@ func main() {
 	router.HandleFunc("/api/markets/{id}", gateway.handleMarketRequest).Methods("GET", "PUT")
 	router.HandleFunc("/api/markets/{id}/options", gateway.handleMarketRequest).Methods("GET")
 
-	// Wallet routes
-	router.HandleFunc("/api/wallets", gateway.handleWalletRequest).Methods("POST")
-	router.HandleFunc("/api/wallets/{id}", gateway.handleWalletRequest).Methods("GET")
-	router.HandleFunc("/api/wallets/{id}/transactions", gateway.handleWalletRequest).Methods("GET")
-	router.HandleFunc("/api/wallets/{id}/deposit", gateway.handleWalletRequest).Methods("POST")
-	router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
+    // Wallet routes
+    router.HandleFunc("/api/wallets", gateway.handleWalletRequest).Methods("POST")
+    router.HandleFunc("/api/wallets/{id}", gateway.handleWalletRequest).Methods("GET")
+    router.HandleFunc("/api/wallets/{id}/transactions", gateway.handleWalletRequest).Methods("GET")
+    router.HandleFunc("/api/wallets/{id}/deposit", gateway.handleWalletRequest).Methods("POST")
+    router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
+    router.HandleFunc("/api/wallets/user/{user_id}", gateway.handleWalletRequest).Methods("GET")
 
 	// User routes and auth
 	router.HandleFunc("/api/users", gateway.handleUserRequest).Methods("POST")
