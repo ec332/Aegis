@@ -208,11 +208,11 @@ export async function fetchOptionsByMarketId(marketId: string): Promise<Option[]
 }
 
 // Wallet APIs
-export async function createWallet(userId: string, currency: string = 'USD'): Promise<WalletAccount> {
+export async function createWallet(userId: string): Promise<WalletAccount> {
   try {
     const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets`, {
       method: 'POST',
-      body: JSON.stringify({ user_id: userId, currency }),
+      body: JSON.stringify({ user_id: userId }),
     });
     const data = await handleResponse<{ account: WalletAccount }>(response);
     return data.account;

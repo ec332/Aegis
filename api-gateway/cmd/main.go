@@ -312,9 +312,12 @@ func (g *APIGateway) createWallet(ctx context.Context, w http.ResponseWriter, r 
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-
-	ctx = g.withAuth(ctx, r)
-	resp, err := g.walletStub.CreateWalletAccount(ctx, &req)
+    if strings.TrimSpace(req.Currency) == "" {
+        req.Currency = strings.TrimSpace(getEnv("WALLET_DEFAULT_CURRENCY", "USD"))
+    }
+    
+    ctx = g.withAuth(ctx, r)
+    resp, err := g.walletStub.CreateWalletAccount(ctx, &req)
 
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "CreateWalletAccount")
@@ -367,7 +370,8 @@ func (g *APIGateway) getWalletByUserID(ctx context.Context, w http.ResponseWrite
         http.Error(w, "User ID required", http.StatusBadRequest)
         return
     }
-    req := &wallet.GetWalletAccountByUserIDRequest{UserId: userID}
+    defCur := strings.TrimSpace(getEnv("WALLET_DEFAULT_CURRENCY", "USD"))
+    req := &wallet.GetWalletAccountByUserIDRequest{UserId: userID, Currency: defCur}
     ctx = g.withAuth(ctx, r)
     resp, err := g.walletStub.GetWalletAccountByUserID(ctx, req)
     if err != nil {
@@ -1009,13 +1013,7 @@ func (g *APIGateway) devLogin(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Create a default wallet account for the test user (idempotent)
-    currency := strings.TrimSpace(getEnv("AUTH_DEV_LOGIN_CURRENCY", "USD"))
-    if userResp.User != nil && userResp.User.Id != "" && currency != "" {
-        md := metadata.Pairs("authorization", fmt.Sprintf("Bearer %s", tokenString))
-        ctxAuth := metadata.NewOutgoingContext(ctx, md)
-        _, _ = g.walletStub.CreateWalletAccount(ctxAuth, &wallet.CreateWalletAccountRequest{UserId: userResp.User.Id, Currency: currency})
-    }
+    // No wallet account is pre-created here. Frontend will create on-demand.
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(map[string]string{"token": tokenString})

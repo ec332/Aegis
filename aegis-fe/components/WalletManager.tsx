@@ -12,6 +12,7 @@ export default function WalletManager({ userId }: { userId: string }) {
     isLoadingWallet, 
     error,
     loadCurrentUserWallet, 
+    createWalletForUser,
     depositFunds, 
     withdrawFunds 
   } = useAppStore();
@@ -131,12 +132,12 @@ export default function WalletManager({ userId }: { userId: string }) {
           <div className="text-center py-8">
             <p className="text-gray-500 mb-4">No wallet found</p>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!isAuthenticated || !token) {
                   alert('Please sign in first');
                   return;
                 }
-                loadCurrentUserWallet(userId);
+                await createWalletForUser(userId);
               }}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
             >
