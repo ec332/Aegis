@@ -186,6 +186,10 @@ func (s *Server) CreateWalletAccount(ctx context.Context, req *wallet.CreateWall
     }
     acc, err := s.service.CreateWalletAccount(ctx, req.UserId, req.Currency)
     if err != nil {
+        msg := strings.ToLower(err.Error())
+        if strings.Contains(msg, "user not found") {
+            return nil, status.Error(codes.NotFound, "user not found")
+        }
         s.logger.Error("create wallet account failed", zap.Error(err))
         return nil, status.Error(codes.Internal, "create wallet account failed")
     }

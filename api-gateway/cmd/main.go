@@ -955,22 +955,6 @@ func main() {
 		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           300,
-        AllowedOriginValidator: func(r *http.Request, origin string) bool {
-            o := strings.ToLower(strings.TrimSpace(origin))
-            if o == "" {
-                return false
-            }
-            if strings.HasPrefix(o, "http://localhost") || strings.HasPrefix(o, "https://localhost") {
-                return true
-            }
-            if strings.HasPrefix(o, "http://127.0.0.1") || strings.HasPrefix(o, "https://127.0.0.1") {
-                return true
-            }
-            if strings.HasPrefix(o, "http://0.0.0.0") || strings.HasPrefix(o, "https://0.0.0.0") {
-                return true
-            }
-            return false
-        },
 	})
 
 	handler := corsMiddleware(router)

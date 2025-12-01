@@ -107,24 +107,26 @@ function getMockUserId(): string {
 export async function loadProfile(): Promise<UserProfile | null> {
   const token = getStoredToken();
   if (!token) return null;
-  const payload = decodeJwtPayload(token);
-  if (payload && payload.wallet === DEFAULT_USER_ID && (isLocalHost() || isDevEnv())) {
-    return {
-      id: getMockUserId(),
-      wallet_address: DEFAULT_USER_ID,
-      balance: 0,
-      nonce: "dev",
-      role: "user",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      last_login: new Date().toISOString(),
-    };
-  }
   const res = await fetch(`${API_BASE_URL}/auth/me`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const payload = decodeJwtPayload(token);
+    if (payload && payload.wallet === DEFAULT_USER_ID && (isLocalHost() || isDevEnv())) {
+      return {
+        id: getMockUserId(),
+        wallet_address: DEFAULT_USER_ID,
+        balance: 0,
+        nonce: "dev",
+        role: "user",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login: new Date().toISOString(),
+      };
+    }
+    return null;
+  }
   const data = await res.json();
   // Response shape: { user: { ... } }
   const user = (data.user || null) as any;

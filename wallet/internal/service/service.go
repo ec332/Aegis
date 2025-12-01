@@ -165,6 +165,10 @@ func (s *Service) CreateWalletAccount(ctx context.Context, userID string, curren
     if userID == "" || currency == "" {
         return nil, fmt.Errorf("user_id and currency are required")
     }
+    // Ensure the user exists to prevent orphaned wallet accounts
+    if _, err := s.repo.GetUser(ctx, userID); err != nil {
+        return nil, fmt.Errorf("user not found: %w", err)
+    }
     acc, err := s.repo.GetWalletAccountByUserCurrency(ctx, userID, currency)
     if err == nil {
         return acc, nil
