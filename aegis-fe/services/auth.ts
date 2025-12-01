@@ -76,7 +76,27 @@ export async function loadProfile(): Promise<UserProfile | null> {
   if (!res.ok) return null;
   const data = await res.json();
   // Response shape: { user: { ... } }
-  return (data.user || null) as UserProfile | null;
+  const user = (data.user || null) as any;
+  if (!user) return null;
+  const normalize = (ts: any): string | null => {
+    if (!ts) return null;
+    if (typeof ts === "string") return ts;
+    if (typeof ts === "object" && typeof ts.seconds === "number") {
+      const ms = ts.seconds * 1000 + (ts.nanos ? ts.nanos / 1e6 : 0);
+      return new Date(ms).toISOString();
+    }
+    return null;
+  };
+  return {
+    id: user.id,
+    wallet_address: user.wallet_address,
+    balance: user.balance,
+    nonce: user.nonce,
+    role: user.role,
+    created_at: normalize(user.created_at) || undefined,
+    updated_at: normalize(user.updated_at) || undefined,
+    last_login: normalize(user.last_login),
+  };
 }
 
 export async function logout(): Promise<void> {

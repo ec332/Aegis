@@ -60,8 +60,8 @@ export default function TradeModal({
   const optionLabel = (option: Option) => option.option_text || (option as any).title || "Option";
 
   return (
-    <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-[640px] sm:max-w-md max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center">
           <h2 className="text-xl font-bold text-[#151b4d]">
@@ -76,7 +76,7 @@ export default function TradeModal({
         </div>
 
         {/* Content */}
-        <div className="px-6 py-4">
+        <div className="px-4 sm:px-6 py-4">
           {/* Market Details */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-[#151b4d] mb-2">
@@ -145,7 +145,7 @@ export default function TradeModal({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={onClose}
               className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors font-medium"
