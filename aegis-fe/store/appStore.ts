@@ -25,7 +25,7 @@ import {
   checkHealth,
   fetchUserTransactions,
 } from "@/services/api";
-import { fetchWalletTransactions } from "@/services/api";
+import { fetchWalletTransactions, getWalletByUserId } from "@/services/api";
 
 interface AppState {
   // Markets
@@ -67,6 +67,7 @@ interface AppState {
 
   // Wallet actions
   createWallet: (userId: string, currency?: string) => Promise<WalletAccount>;
+  createWalletForUser: (userId: string) => Promise<WalletAccount>;
   loadWallet: (walletId: string) => Promise<WalletAccount | null>;
   loadCurrentUserWallet: (userId: string) => Promise<void>;
   depositFunds: (walletId: string, amount: number, referenceId?: string) => Promise<WalletTransaction>;
@@ -262,13 +263,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Wallet actions
   createWallet: async (userId: string, currency: string = 'USD') => {
     try {
-      const wallet = await apiCreateWallet(userId, currency);
+      const wallet = await apiCreateWallet(userId);
       set((state) => ({
         walletAccounts: [...state.walletAccounts, wallet]
       }));
       return wallet;
     } catch (error) {
       console.error("Error creating wallet:", error);
+      set({ error: error as APIError });
+      throw error;
+    }
+  },
+
+  createWalletForUser: async (userId: string) => {
+    try {
+      const wallet = await apiCreateWallet(userId);
+      set((state) => ({
+        walletAccounts: [...state.walletAccounts, wallet],
+        currentWallet: wallet,
+      }));
+      await get().loadWalletTransactions(wallet.id);
+      return wallet;
+    } catch (error) {
+      console.error("Error creating wallet for user:", error);
       set({ error: error as APIError });
       throw error;
     }
@@ -294,14 +311,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadCurrentUserWallet: async (userId: string) => {
     set({ isLoadingWallet: true });
     try {
-      // For now, create a wallet if one doesn't exist
-      // In a real app, you'd fetch the user's existing wallet
-      const wallet = await apiCreateWallet(userId);
-      set({
-        currentWallet: wallet,
-        isLoadingWallet: false
-      });
-      await get().loadWalletTransactions(wallet.id);
+      const existing = await getWalletByUserId(userId);
+      if (existing) {
+        set({ currentWallet: existing, isLoadingWallet: false });
+        await get().loadWalletTransactions(existing.id);
+      } else {
+        set({ isLoadingWallet: false });
+      }
     } catch (error) {
       console.error(`Error loading user wallet for ${userId}:`, error);
       set({

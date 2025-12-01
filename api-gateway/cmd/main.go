@@ -17,6 +17,8 @@ import (
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
 
 	market "github.com/aegis/proto/gen/market"
 	settlement "github.com/aegis/proto/gen/settlement"
@@ -190,14 +192,37 @@ func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r 
 		req.EndTime = timestamppb.New(t)
 	}
 
-	resp, err := g.marketStub.CreateMarket(ctx, &req)
+    resp, err := g.marketStub.CreateMarket(ctx, &req)
 
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "market", "CreateMarket")
-		return
-	}
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "market", "CreateMarket")
+        return
+    }
 
-	g.writeJSONResponse(w, http.StatusCreated, resp)
+    var listResp *market.ListMarketsResponse
+    lr, lerr := g.marketStub.ListMarkets(ctx, &market.ListMarketsRequest{})
+    if lerr == nil {
+        listResp = lr
+    } else {
+        g.logger.Warn("ListMarkets after create failed", zap.Error(lerr))
+    }
+
+    var optsResp *market.GetMarketOptionsResponse
+    if resp != nil && resp.Market != nil && strings.TrimSpace(resp.Market.Id) != "" {
+        or, oerr := g.marketStub.GetMarketOptions(ctx, &market.GetMarketOptionsRequest{MarketId: resp.Market.Id})
+        if oerr == nil {
+            optsResp = or
+        } else {
+            g.logger.Warn("GetMarketOptions after create failed", zap.Error(oerr))
+        }
+    }
+
+    out := map[string]interface{}{
+        "market":  resp.Market,
+        "markets": func() interface{} { if listResp != nil { return listResp.Markets } ; return []interface{}{} }(),
+        "options": func() interface{} { if optsResp != nil { return optsResp.Options } ; return []interface{}{} }(),
+    }
+    g.writeJSONResponse(w, http.StatusCreated, out)
 }
 
 func (g *APIGateway) updateMarket(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -254,6 +279,8 @@ func (g *APIGateway) handleWalletRequest(w http.ResponseWriter, r *http.Request)
     case method == "GET" && strings.Contains(path, "/wallets/"):
         if strings.HasSuffix(path, "/transactions") {
             g.getWalletTransactions(ctx, w, r)
+        } else if strings.Contains(path, "/wallets/user/") {
+            g.getWalletByUserID(ctx, w, r)
         } else {
             g.getWallet(ctx, w, r)
         }
@@ -310,9 +337,12 @@ func (g *APIGateway) createWallet(ctx context.Context, w http.ResponseWriter, r 
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-
-	ctx = g.withAuth(ctx, r)
-	resp, err := g.walletStub.CreateWalletAccount(ctx, &req)
+    if strings.TrimSpace(req.Currency) == "" {
+        req.Currency = strings.TrimSpace(getEnv("WALLET_DEFAULT_CURRENCY", "USD"))
+    }
+    
+    ctx = g.withAuth(ctx, r)
+    resp, err := g.walletStub.CreateWalletAccount(ctx, &req)
 
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "wallet", "CreateWalletAccount")
@@ -345,6 +375,40 @@ func (g *APIGateway) getWallet(ctx context.Context, w http.ResponseWriter, r *ht
 	}
 
 	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+func (g *APIGateway) getWalletByUserID(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    parts := strings.Split(r.URL.Path, "/")
+    var userID string
+    for i, p := range parts {
+        if p == "user" && i+1 < len(parts) {
+            userID = parts[i+1]
+            break
+        }
+    }
+    if strings.TrimSpace(userID) == "" {
+        http.Error(w, "User ID required", http.StatusBadRequest)
+        return
+    }
+    defCur := strings.TrimSpace(getEnv("WALLET_DEFAULT_CURRENCY", "USD"))
+    req := &wallet.GetWalletAccountByUserIDRequest{UserId: userID, Currency: defCur}
+    ctx = g.withAuth(ctx, r)
+    resp, err := g.walletStub.GetWalletAccountByUserID(ctx, req)
+    if err != nil {
+        msg := strings.ToLower(err.Error())
+        if strings.Contains(msg, "not found") {
+            g.writeJSONResponse(w, http.StatusOK, map[string]interface{}{"account": nil})
+            return
+        }
+        g.handleGRPCError(ctx, w, err, "wallet", "GetWalletAccountByUserID")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 func (g *APIGateway) deposit(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -629,51 +693,76 @@ func (g *APIGateway) completeSettlement(ctx context.Context, w http.ResponseWrit
 }
 
 func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter, err error, service, method string) {
-	g.logger.Error("gRPC call failed",
-		zap.String("service", service),
-		zap.String("method", method),
-		zap.Error(err),
-	)
+    st, ok := status.FromError(err)
+    code := codes.Unknown
+    if ok {
+        code = st.Code()
+    }
 
-	// Check if this was a circuit breaker or timeout error that triggered Kafka fallback
-	if strings.Contains(err.Error(), "circuit breaker open") || strings.Contains(err.Error(), "timeout") {
-		// Send to Kafka for async processing
-		topic := fmt.Sprintf("%s.%s.fallback", service, method)
-		message := map[string]interface{}{
-			"service":   service,
-			"method":    method,
-			"timestamp": time.Now().Unix(),
-			"error":     err.Error(),
-		}
+    if service == "wallet" && method == "GetWalletAccountByUserID" && code == codes.NotFound {
+        g.writeJSONResponse(w, http.StatusOK, map[string]interface{}{"account": nil})
+        return
+    }
 
-		if g.kafkaProducer != nil {
-			if kafkaErr := g.kafkaProducer.Publish(ctx, topic, fmt.Sprintf("%s_%s", service, method), message); kafkaErr != nil {
-				g.logger.Error("Failed to send fallback message to Kafka",
-					zap.String("topic", topic),
-					zap.Error(kafkaErr),
-				)
-			}
-		}
+    g.logger.Error("gRPC call failed",
+        zap.String("service", service),
+        zap.String("method", method),
+        zap.String("code", code.String()),
+        zap.Error(err),
+    )
 
-		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "accepted",
-			"message": "Request queued for async processing",
-		})
-		return
-	}
+    if code == codes.Unavailable || code == codes.DeadlineExceeded ||
+        strings.Contains(strings.ToLower(err.Error()), "circuit breaker open") || strings.Contains(strings.ToLower(err.Error()), "timeout") {
+        topic := fmt.Sprintf("%s.%s.fallback", service, method)
+        message := map[string]interface{}{
+            "service":   service,
+            "method":    method,
+            "timestamp": time.Now().Unix(),
+            "error":     err.Error(),
+        }
 
-	// Convert gRPC error to HTTP status
-	status := http.StatusInternalServerError
-	if strings.Contains(err.Error(), "Unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "authorization required") || strings.Contains(strings.ToLower(err.Error()), "invalid token") {
-		status = http.StatusUnauthorized
-	} else if strings.Contains(err.Error(), "not found") {
-		status = http.StatusNotFound
-	} else if strings.Contains(err.Error(), "invalid") {
-		status = http.StatusBadRequest
-	}
+        if g.kafkaProducer != nil {
+            if kafkaErr := g.kafkaProducer.Publish(ctx, topic, fmt.Sprintf("%s_%s", service, method), message); kafkaErr != nil {
+                g.logger.Error("Failed to send fallback message to Kafka",
+                    zap.String("topic", topic),
+                    zap.Error(kafkaErr),
+                )
+            }
+        }
 
-	http.Error(w, err.Error(), status)
+        w.WriteHeader(http.StatusAccepted)
+        json.NewEncoder(w).Encode(map[string]string{
+            "status":  "accepted",
+            "message": "Request queued for async processing",
+        })
+        return
+    }
+
+    httpStatus := http.StatusInternalServerError
+    switch code {
+    case codes.Unauthenticated:
+        httpStatus = http.StatusUnauthorized
+    case codes.PermissionDenied:
+        httpStatus = http.StatusForbidden
+    case codes.NotFound:
+        httpStatus = http.StatusNotFound
+    case codes.InvalidArgument, codes.FailedPrecondition, codes.OutOfRange:
+        httpStatus = http.StatusBadRequest
+    case codes.AlreadyExists, codes.Aborted:
+        httpStatus = http.StatusConflict
+    case codes.ResourceExhausted:
+        httpStatus = http.StatusTooManyRequests
+    case codes.Unavailable:
+        httpStatus = http.StatusServiceUnavailable
+    case codes.DeadlineExceeded:
+        httpStatus = http.StatusGatewayTimeout
+    case codes.Canceled:
+        httpStatus = 499
+    default:
+        httpStatus = http.StatusInternalServerError
+    }
+
+    http.Error(w, err.Error(), httpStatus)
 }
 
 func (g *APIGateway) handleTransactionRequest(w http.ResponseWriter, r *http.Request) {
@@ -799,12 +888,13 @@ func main() {
 	router.HandleFunc("/api/markets/{id}", gateway.handleMarketRequest).Methods("GET", "PUT")
 	router.HandleFunc("/api/markets/{id}/options", gateway.handleMarketRequest).Methods("GET")
 
-	// Wallet routes
-	router.HandleFunc("/api/wallets", gateway.handleWalletRequest).Methods("POST")
-	router.HandleFunc("/api/wallets/{id}", gateway.handleWalletRequest).Methods("GET")
-	router.HandleFunc("/api/wallets/{id}/transactions", gateway.handleWalletRequest).Methods("GET")
-	router.HandleFunc("/api/wallets/{id}/deposit", gateway.handleWalletRequest).Methods("POST")
-	router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
+    // Wallet routes
+    router.HandleFunc("/api/wallets", gateway.handleWalletRequest).Methods("POST")
+    router.HandleFunc("/api/wallets/{id}", gateway.handleWalletRequest).Methods("GET")
+    router.HandleFunc("/api/wallets/{id}/transactions", gateway.handleWalletRequest).Methods("GET")
+    router.HandleFunc("/api/wallets/{id}/deposit", gateway.handleWalletRequest).Methods("POST")
+    router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
+    router.HandleFunc("/api/wallets/user/{user_id}", gateway.handleWalletRequest).Methods("GET")
 
 	// User routes and auth
 	router.HandleFunc("/api/users", gateway.handleUserRequest).Methods("POST")
@@ -978,13 +1068,7 @@ func (g *APIGateway) devLogin(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Create a default wallet account for the test user (idempotent)
-    currency := strings.TrimSpace(getEnv("AUTH_DEV_LOGIN_CURRENCY", "USD"))
-    if userResp.User != nil && userResp.User.Id != "" && currency != "" {
-        md := metadata.Pairs("authorization", fmt.Sprintf("Bearer %s", tokenString))
-        ctxAuth := metadata.NewOutgoingContext(ctx, md)
-        _, _ = g.walletStub.CreateWalletAccount(ctxAuth, &wallet.CreateWalletAccountRequest{UserId: userResp.User.Id, Currency: currency})
-    }
+    // No wallet account is pre-created here. Frontend will create on-demand.
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(map[string]string{"token": tokenString})

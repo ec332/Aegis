@@ -1,10 +1,18 @@
 "use client";
 
+import { DEFAULT_USER_ID } from "@/constants";
+
 // Client-side auth utilities for MetaMask-based Web3 login
 // Detailed comments included to assist future extension
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 const TOKEN_KEY = "aegis.jwt";
+const isLocalHost = () => {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1" || h.endsWith(".local");
+};
+const isDevEnv = () => process.env.NODE_ENV !== "production";
 
 export type UserProfile = {
   id: string;
@@ -66,6 +74,36 @@ export function clearStoredToken(): void {
   } catch {}
 }
 
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(base64);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function getMockUserId(): string {
+  try {
+    const key = "aegis.mockUserId";
+    const existing = localStorage.getItem(key);
+    if (existing && existing.length >= 32) return existing;
+    const id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx`.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+    localStorage.setItem(key, id);
+    return id;
+  } catch {
+    return "00000000-0000-4000-8000-000000000000";
+  }
+}
+
 export async function loadProfile(): Promise<UserProfile | null> {
   const token = getStoredToken();
   if (!token) return null;
@@ -73,7 +111,22 @@ export async function loadProfile(): Promise<UserProfile | null> {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const payload = decodeJwtPayload(token);
+    if (payload && payload.wallet === DEFAULT_USER_ID && (isLocalHost() || isDevEnv())) {
+      return {
+        id: getMockUserId(),
+        wallet_address: DEFAULT_USER_ID,
+        balance: 0,
+        nonce: "dev",
+        role: "user",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login: new Date().toISOString(),
+      };
+    }
+    return null;
+  }
   const data = await res.json();
   // Response shape: { user: { ... } }
   const user = (data.user || null) as any;
@@ -125,7 +178,7 @@ export async function startWeb3Login(): Promise<{ token: string; profile: UserPr
   return { token, profile, wallet };
 }
 
-export async function devLogin(wallet?: string): Promise<{ token: string; profile: UserProfile | null; wallet: string }>
+export async function devLogin(wallet: string = DEFAULT_USER_ID): Promise<{ token: string; profile: UserProfile | null; wallet: string }>
 {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
   // Prefer /api/auth/dev-login, fallback to /auth/dev-login
@@ -146,7 +199,7 @@ export async function devLogin(wallet?: string): Promise<{ token: string; profil
       const token = data.token as string;
       localStorage.setItem("aegis.jwt", token);
       const profile = await loadProfile();
-      return { token, profile, wallet: wallet || "0xTESTUSER" };
+      return { token, profile, wallet };
     } catch (e) {
       lastErr = e;
     }

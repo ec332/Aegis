@@ -12,6 +12,7 @@ export default function WalletManager({ userId }: { userId: string }) {
     isLoadingWallet, 
     error,
     loadCurrentUserWallet, 
+    createWalletForUser,
     depositFunds, 
     withdrawFunds 
   } = useAppStore();
@@ -20,6 +21,7 @@ export default function WalletManager({ userId }: { userId: string }) {
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [creatingWallet, setCreatingWallet] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
@@ -131,16 +133,23 @@ export default function WalletManager({ userId }: { userId: string }) {
           <div className="text-center py-8">
             <p className="text-gray-500 mb-4">No wallet found</p>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!isAuthenticated || !token) {
                   alert('Please sign in first');
                   return;
                 }
-                loadCurrentUserWallet(userId);
+                if (creatingWallet) return;
+                setCreatingWallet(true);
+                try {
+                  await createWalletForUser(userId);
+                } finally {
+                  setCreatingWallet(false);
+                }
               }}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+              className={`bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors ${creatingWallet ? 'opacity-60 cursor-not-allowed' : ''}`}
+              disabled={creatingWallet}
             >
-              Create Wallet
+              {creatingWallet ? 'Creating…' : 'Create Wallet'}
             </button>
           </div>
         )}
@@ -234,7 +243,27 @@ export default function WalletManager({ userId }: { userId: string }) {
                   <div>
                     <p className="font-medium text-gray-900 capitalize">{transaction.type}</p>
                     <p className="text-sm text-gray-500">
-                      {transaction.created_at ? new Date(transaction.created_at).toLocaleString() : 'Unknown date'}
+                      {(() => {
+                        const v: any = (transaction as any).created_at
+                        if (!v) return 'Unknown date'
+                        if (typeof v === 'string') {
+                          const d = new Date(v)
+                          return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleString()
+                        }
+                        if (typeof v === 'number') {
+                          const d = new Date(v)
+                          return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleString()
+                        }
+                        if (typeof v === 'object') {
+                          const secs = (v.seconds ?? v.Seconds ?? v._seconds)
+                          const nanos = (v.nanos ?? v.Nanos ?? v._nanoseconds ?? 0)
+                          if (typeof secs === 'number') {
+                            const d = new Date(secs * 1000 + Math.floor(nanos / 1e6))
+                            return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleString()
+                          }
+                        }
+                        return 'Unknown date'
+                      })()}
                     </p>
                   </div>
                 </div>
@@ -242,7 +271,7 @@ export default function WalletManager({ userId }: { userId: string }) {
                   <p className={`font-semibold ${
                     transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    {transaction.type === 'deposit' ? '+' : '-'}${transaction.amount.toFixed(2)}
+                    {transaction.type === 'deposit' ? '+' : '-'}${Math.abs(transaction.amount).toFixed(2)}
                   </p>
                   <p className="text-sm text-gray-500">{transaction.status}</p>
                 </div>

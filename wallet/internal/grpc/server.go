@@ -3,6 +3,7 @@ package grpc
 import (
     "context"
     "time"
+    "strings"
 
     "aegis/wallet/internal/auth"
     "aegis/wallet/internal/service"
@@ -185,6 +186,10 @@ func (s *Server) CreateWalletAccount(ctx context.Context, req *wallet.CreateWall
     }
     acc, err := s.service.CreateWalletAccount(ctx, req.UserId, req.Currency)
     if err != nil {
+        msg := strings.ToLower(err.Error())
+        if strings.Contains(msg, "user not found") {
+            return nil, status.Error(codes.NotFound, "user not found")
+        }
         s.logger.Error("create wallet account failed", zap.Error(err))
         return nil, status.Error(codes.Internal, "create wallet account failed")
     }
@@ -206,10 +211,10 @@ func (s *Server) GetWalletAccount(ctx context.Context, req *wallet.GetWalletAcco
     }
     acc, err := s.service.GetWalletAccount(ctx, req.Id)
     if err != nil {
-        s.logger.Error("get wallet account failed", zap.Error(err))
-        if status.Code(err) == codes.NotFound {
+        if strings.Contains(strings.ToLower(err.Error()), "not found") {
             return nil, status.Error(codes.NotFound, "not found")
         }
+        s.logger.Error("get wallet account failed", zap.Error(err))
         return nil, status.Error(codes.Internal, "get wallet account failed")
     }
     return &wallet.GetWalletAccountResponse{Account: &wallet.WalletAccount{
@@ -230,8 +235,11 @@ func (s *Server) GetWalletAccountByUserID(ctx context.Context, req *wallet.GetWa
     }
     acc, err := s.service.GetWalletAccountByUserCurrency(ctx, req.UserId, req.Currency)
     if err != nil {
+        if strings.Contains(strings.ToLower(err.Error()), "not found") {
+            return nil, status.Error(codes.NotFound, "not found")
+        }
         s.logger.Error("get wallet account by user/currency failed", zap.Error(err))
-        return nil, status.Error(codes.NotFound, "not found")
+        return nil, status.Error(codes.Internal, "get wallet account by user/currency failed")
     }
     return &wallet.GetWalletAccountByUserIDResponse{Account: &wallet.WalletAccount{
         Id:               acc.ID,

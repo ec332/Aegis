@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useAppStore } from "@/store/appStore";
 
 type MarketFormProps = {
   onCreated?: () => void;
@@ -14,6 +15,7 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
   const [option2, setOption2] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [error, setError] = useState("");
+  const { loadMarkets, loadOptionsForMarket } = useAppStore();
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -36,12 +38,19 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
         throw new Error(`Request failed (${response.status})`);
       }
 
+      const payload = await response.json();
+      const createdMarketId = payload?.market?.id || payload?.id;
+
       setStatus("success");
       setQuestion("");
       setDescription("");
       setResolutionDatetime("");
       setOption1("");
       setOption2("");
+      await loadMarkets();
+      if (createdMarketId) {
+        await loadOptionsForMarket(createdMarketId);
+      }
       onCreated?.();
     } catch (err) {
       setStatus("error");

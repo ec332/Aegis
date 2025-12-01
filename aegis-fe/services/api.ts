@@ -208,11 +208,11 @@ export async function fetchOptionsByMarketId(marketId: string): Promise<Option[]
 }
 
 // Wallet APIs
-export async function createWallet(userId: string, currency: string = 'USD'): Promise<WalletAccount> {
+export async function createWallet(userId: string): Promise<WalletAccount> {
   try {
     const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets`, {
       method: 'POST',
-      body: JSON.stringify({ user_id: userId, currency }),
+      body: JSON.stringify({ user_id: userId }),
     });
     const data = await handleResponse<{ account: WalletAccount }>(response);
     return data.account;
@@ -230,6 +230,29 @@ export async function getWallet(walletId: string): Promise<WalletAccount | null>
   } catch (error) {
     console.error(`Error fetching wallet ${walletId}:`, error);
     throw error;
+  }
+}
+
+export async function getWalletByUserId(userId: string): Promise<WalletAccount | null> {
+  try {
+    const token = typeof window !== 'undefined' ? getStoredToken() : null;
+    const res = await fetch(`${API_BASE_URL}/api/wallets/user/${userId}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (res.status === 404) {
+      return null;
+    }
+    if (!res.ok) {
+      throw new APIError(res.status, `HTTP ${res.status}: ${res.statusText}`);
+    }
+    const data = await res.json() as { account: WalletAccount | null };
+    return data.account || null;
+  } catch (error) {
+    console.error(`Error fetching wallet by user ${userId}:`, error);
+    return null;
   }
 }
 
