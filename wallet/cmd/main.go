@@ -58,6 +58,14 @@ func main() {
         ),
     )
 
+    server := wgrpc.NewServer(svc, logger, tm)
+    wallet.RegisterWalletServiceServer(grpcServer, server)
+
+    healthServer := health.NewServer()
+    grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+    healthServer.SetServingStatus("wallet.WalletService", grpc_health_v1.HealthCheckResponse_SERVING)
+    reflection.Register(grpcServer)
+
 	port := getEnv("WALLET_SERVICE_PORT", "50052")
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -72,10 +80,10 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+    <-quit
 
-	healthServer.SetServingStatus("wallet.WalletService", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
-	grpcServer.GracefulStop()
+    healthServer.SetServingStatus("wallet.WalletService", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+    grpcServer.GracefulStop()
 }
 
 func getEnv(k, d string) string {

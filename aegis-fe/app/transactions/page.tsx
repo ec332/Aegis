@@ -3,12 +3,14 @@
 import TransactionItem from "@/components/TransactionItem";
 import TradeModal from "@/components/TradeModal";
 import { useAppStore } from "@/store";
+import { useAuthStore } from "@/store/authStore";
 import { Transaction, Market, Option } from "@/types";
 import { useEffect, useState } from "react";
 import { fetchMarketById, fetchOptionsByMarketId } from "@/services/api";
 
 export default function TransactionsPage() {
-  const { transactions, loadTransactions, removeTransaction } = useAppStore();
+  const { transactions, loadTransactionsForUser } = useAppStore();
+  const { isAuthenticated, profile } = useAuthStore();
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(
     null
   );
@@ -16,10 +18,11 @@ export default function TransactionsPage() {
     [key: string]: { market: Market; option: Option };
   }>({});
 
-  // Load transactions on mount
+  // Load user's transactions on mount and when auth changes
   useEffect(() => {
-    loadTransactions();
-  }, [loadTransactions]);
+    if (!isAuthenticated || !profile?.id) return;
+    loadTransactionsForUser(profile.id);
+  }, [isAuthenticated, profile?.id, loadTransactionsForUser]);
 
   // Load market and option details for each transaction
   useEffect(() => {
@@ -71,32 +74,41 @@ export default function TransactionsPage() {
           </div>
 
           {/* Transactions List */}
-          {transactions.length > 0 ? (
-            <div className="space-y-4">
-              {transactions.map((transaction) => {
-                const details = transactionDetails[transaction.id];
-                if (!details) return null;
-                
-                return (
-                  <TransactionItem
-                    key={transaction.id}
-                    transaction={transaction}
-                    market={details.market}
-                    option={details.option}
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-gray-600 text-lg mb-4">
-                No transactions yet
-              </p>
-              <p className="text-gray-500">
-                Start trading to see your transactions here
-              </p>
-            </div>
-          )}
+          {isAuthenticated
+            ? (transactions.length > 0
+                ? (
+                  <div className="space-y-4">
+                    {transactions.map((transaction) => {
+                      const details = transactionDetails[transaction.id];
+                      if (!details) return null;
+                      
+                      return (
+                        <TransactionItem
+                          key={transaction.id}
+                          transaction={transaction}
+                          market={details.market}
+                          option={details.option}
+                        />
+                      );
+                    })}
+                  </div>
+                )
+                : (
+                  <div className="text-center py-12">
+                    <p className="text-gray-600 text-lg mb-4">
+                      No transactions yet
+                    </p>
+                    <p className="text-gray-500">
+                      Start trading to see your transactions here
+                    </p>
+                  </div>
+                )
+              )
+            : (
+                <div className="text-center py-12">
+                  <p className="text-gray-600 text-lg mb-4">Please sign in to view your transactions.</p>
+                </div>
+              )}
         </div>
       </main>
 

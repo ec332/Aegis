@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"time"
+    "strconv"
 
 	"github.com/go-chi/cors"
 	jwt "github.com/golang-jwt/jwt/v5"
@@ -243,22 +244,26 @@ func (g *APIGateway) getMarketOptions(ctx context.Context, w http.ResponseWriter
 }
 
 func (g *APIGateway) handleWalletRequest(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	path := r.URL.Path
-	method := r.Method
+    ctx := r.Context()
+    path := r.URL.Path
+    method := r.Method
 
-	switch {
-	case method == "POST" && strings.HasSuffix(path, "/wallets"):
-		g.createWallet(ctx, w, r)
-	case method == "GET" && strings.Contains(path, "/wallets/"):
-		g.getWallet(ctx, w, r)
-	case method == "POST" && strings.Contains(path, "/wallets/") && strings.HasSuffix(path, "/deposit"):
-		g.deposit(ctx, w, r)
-	case method == "POST" && strings.Contains(path, "/wallets/") && strings.HasSuffix(path, "/withdraw"):
-		g.withdraw(ctx, w, r)
-	default:
-		http.Error(w, "Not found", http.StatusNotFound)
-	}
+    switch {
+    case method == "POST" && strings.HasSuffix(path, "/wallets"):
+        g.createWallet(ctx, w, r)
+    case method == "GET" && strings.Contains(path, "/wallets/"):
+        if strings.HasSuffix(path, "/transactions") {
+            g.getWalletTransactions(ctx, w, r)
+        } else {
+            g.getWallet(ctx, w, r)
+        }
+    case method == "POST" && strings.Contains(path, "/wallets/") && strings.HasSuffix(path, "/deposit"):
+        g.deposit(ctx, w, r)
+    case method == "POST" && strings.Contains(path, "/wallets/") && strings.HasSuffix(path, "/withdraw"):
+        g.withdraw(ctx, w, r)
+    default:
+        http.Error(w, "Not found", http.StatusNotFound)
+    }
 }
 
 func (g *APIGateway) handleUserRequest(w http.ResponseWriter, r *http.Request) {
@@ -400,6 +405,40 @@ func (g *APIGateway) withdraw(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+func (g *APIGateway) getWalletTransactions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    walletID := extractIDFromPath(r.URL.Path, "wallets")
+    if walletID == "" {
+        http.Error(w, "Wallet ID required", http.StatusBadRequest)
+        return
+    }
+    q := r.URL.Query()
+    var limit int32 = 50
+    var offset int32 = 0
+    if v := strings.TrimSpace(q.Get("limit")); v != "" {
+        if n, err := strconv.Atoi(v); err == nil {
+            limit = int32(n)
+        }
+    }
+    if v := strings.TrimSpace(q.Get("offset")); v != "" {
+        if n, err := strconv.Atoi(v); err == nil {
+            offset = int32(n)
+        }
+    }
+    req := &wallet.GetWalletTransactionsRequest{AccountId: walletID, Limit: limit, Offset: offset}
+    ctx = g.withAuth(ctx, r)
+    resp, err := g.walletStub.GetWalletTransactions(ctx, req)
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "wallet", "GetWalletTransactions")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 // User management handlers
@@ -763,6 +802,7 @@ func main() {
 	// Wallet routes
 	router.HandleFunc("/api/wallets", gateway.handleWalletRequest).Methods("POST")
 	router.HandleFunc("/api/wallets/{id}", gateway.handleWalletRequest).Methods("GET")
+	router.HandleFunc("/api/wallets/{id}/transactions", gateway.handleWalletRequest).Methods("GET")
 	router.HandleFunc("/api/wallets/{id}/deposit", gateway.handleWalletRequest).Methods("POST")
 	router.HandleFunc("/api/wallets/{id}/withdraw", gateway.handleWalletRequest).Methods("POST")
 
@@ -774,6 +814,8 @@ func main() {
 	router.HandleFunc("/user/verify", gateway.handleUserRequest).Methods("POST")
 	router.HandleFunc("/auth/nonce", gateway.handleUserRequest).Methods("POST")
 	router.HandleFunc("/auth/verify", gateway.handleUserRequest).Methods("POST")
+	router.HandleFunc("/auth/dev-login", gateway.devLogin).Methods("POST")
+	router.HandleFunc("/api/auth/dev-login", gateway.devLogin).Methods("POST")
 	router.HandleFunc("/auth/me", gateway.handleUserRequest).Methods("GET")
 
 	// Settlement routes
@@ -892,6 +934,60 @@ func (g *APIGateway) me(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return
 	}
 	g.writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// POST /auth/dev-login { wallet?: string }
+// Issues a JWT for development without signature verification
+func (g *APIGateway) devLogin(w http.ResponseWriter, r *http.Request) {
+    enabled := strings.EqualFold(strings.TrimSpace(getEnv("AUTH_DEV_LOGIN_ENABLED", "true")), "true")
+    if !enabled {
+        http.Error(w, "dev login disabled", http.StatusForbidden)
+        return
+    }
+    var body struct{ Wallet string `json:"wallet"` }
+    _ = json.NewDecoder(r.Body).Decode(&body)
+    walletAddr := strings.TrimSpace(body.Wallet)
+    if walletAddr == "" {
+        walletAddr = strings.TrimSpace(getEnv("AUTH_DEV_LOGIN_WALLET", "0xTESTUSER"))
+    }
+    if walletAddr == "" {
+        http.Error(w, "wallet required", http.StatusBadRequest)
+        return
+    }
+
+    // Ensure user exists in wallet service by requesting a nonce (creates user if missing)
+    ctx := r.Context()
+    _, _ = g.walletStub.RequestNonce(ctx, &wallet.RequestNonceRequest{Wallet: walletAddr})
+
+    // Fetch user to get ID
+    userResp, err := g.walletStub.GetUserByWallet(ctx, &wallet.GetUserByWalletRequest{WalletAddress: walletAddr})
+    if err != nil || userResp == nil || userResp.User == nil {
+        // proceed anyway; token issuance below, but account creation may fail
+        userResp = &wallet.GetUserResponse{User: &wallet.User{Id: "", WalletAddress: walletAddr}}
+    }
+
+    secret := strings.TrimSpace(getEnv("AUTH_JWT_SECRET", "dev-secret"))
+    claims := jwt.MapClaims{
+        "wallet": walletAddr,
+        "exp":    time.Now().Add(24 * time.Hour).Unix(),
+    }
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+    tokenString, err := token.SignedString([]byte(secret))
+    if err != nil {
+        http.Error(w, "failed to issue token", http.StatusInternalServerError)
+        return
+    }
+
+    // Create a default wallet account for the test user (idempotent)
+    currency := strings.TrimSpace(getEnv("AUTH_DEV_LOGIN_CURRENCY", "USD"))
+    if userResp.User != nil && userResp.User.Id != "" && currency != "" {
+        md := metadata.Pairs("authorization", fmt.Sprintf("Bearer %s", tokenString))
+        ctxAuth := metadata.NewOutgoingContext(ctx, md)
+        _, _ = g.walletStub.CreateWalletAccount(ctxAuth, &wallet.CreateWalletAccountRequest{UserId: userResp.User.Id, Currency: currency})
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
 }
 
 // Minimal JWT parsing for HS256 to get wallet claim

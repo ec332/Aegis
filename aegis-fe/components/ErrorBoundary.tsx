@@ -27,8 +27,8 @@ export default function ErrorBoundary({
 
   if (error) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+      <div className="fixed inset-x-0 top-16 bottom-0 bg-black bg-opacity-50 flex items-center justify-center z-50 pointer-events-none">
+        <div className="bg-white rounded-lg p-6 max-w-md mx-4 pointer-events-auto">
           <div className="flex items-center mb-4">
             <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
               <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

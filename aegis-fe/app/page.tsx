@@ -8,10 +8,12 @@ import { useAppStore } from "@/store/appStore";
 import { Market, Option } from "@/types";
 import { DEFAULT_USER_ID } from "@/constants";
 import { useEffect, useState } from "react";
+import { useAuthStore } from "@/store/authStore";
 
 export default function Home() {
   const { markets, marketOptions, loadOptionsForMarket, isBackendHealthy } =
     useAppStore();
+  const { isAuthenticated, profile } = useAuthStore();
   const [selectedMarket, setSelectedMarket] = useState<{
     market: Market;
     options: Option[];
@@ -22,6 +24,12 @@ export default function Home() {
   useEffect(() => {
     // No-op: app initialization is handled globally by AppInitializer
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated && activeTab === "wallet") {
+      setActiveTab("markets");
+    }
+  }, [isAuthenticated, activeTab]);
 
   const handleOptionClick = async (option: Option) => {
     const market = markets.find((m) => m.id === option.market_id);
@@ -67,16 +75,18 @@ export default function Home() {
               >
                 Markets
               </button>
-              <button
-                onClick={() => setActiveTab("wallet")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "wallet"
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                Wallet
-              </button>
+              {isAuthenticated && (
+                <button
+                  onClick={() => setActiveTab("wallet")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "wallet"
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  Wallet
+                </button>
+              )}
             </nav>
           </div>
         </div>
@@ -85,13 +95,15 @@ export default function Home() {
           <div>
             <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
               <h2 className="text-2xl font-bold text-[#151b4d]">Active Markets</h2>
-              <button
-                type="button"
-                onClick={() => setIsFormOpen(true)}
-                className="rounded bg-blue-600 px-4 py-2 text-white shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Create market
-              </button>
+              {isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={() => setIsFormOpen(true)}
+                  className="rounded bg-blue-600 px-4 py-2 text-white shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Create market
+                </button>
+              )}
             </div>
             {markets.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -112,10 +124,10 @@ export default function Home() {
           </div>
         )}
 
-        {activeTab === "wallet" && (
+        {isAuthenticated && activeTab === "wallet" && (
           <div>
             <h2 className="text-2xl font-bold text-[#151b4d] mb-8">Wallet Management</h2>
-            <WalletManager userId={DEFAULT_USER_ID} />
+            <WalletManager userId={profile?.id || ""} />
           </div>
         )}
 

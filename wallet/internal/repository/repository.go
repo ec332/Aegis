@@ -265,3 +265,32 @@ func (r *Repository) UpdateWalletBalanceAndCreateTransaction(ctx context.Context
     }
     return &models.WalletTransaction{ID: id, WalletID: walletID, Type: txType, Amount: amount, BalanceAfter: newBalance, Description: description, Status: "completed", CreatedAt: now, UpdatedAt: now}, newBalance, nil
 }
+
+func (r *Repository) ListWalletTransactions(ctx context.Context, walletID string, limit, offset int32) ([]models.WalletTransaction, int32, error) {
+    rows, err := r.db.QueryContext(ctx, `
+        SELECT id, wallet_id, type, amount, balance_after, description, status, created_at
+        FROM wallet_transactions
+        WHERE wallet_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+    `, walletID, limit, offset)
+    if err != nil {
+        return nil, 0, fmt.Errorf("list wallet transactions: %w", err)
+    }
+    defer rows.Close()
+    var list []models.WalletTransaction
+    for rows.Next() {
+        var t models.WalletTransaction
+        if err := rows.Scan(&t.ID, &t.WalletID, &t.Type, &t.Amount, &t.BalanceAfter, &t.Description, &t.Status, &t.CreatedAt); err != nil {
+            return nil, 0, fmt.Errorf("scan wallet transaction: %w", err)
+        }
+        t.UpdatedAt = t.CreatedAt
+        list = append(list, t)
+    }
+    var total64 int64
+    err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1`, walletID).Scan(&total64)
+    if err != nil {
+        return nil, 0, fmt.Errorf("count wallet transactions: %w", err)
+    }
+    return list, int32(total64), nil
+}
