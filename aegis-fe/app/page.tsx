@@ -13,7 +13,7 @@ import { useAuthStore } from "@/store/authStore";
 export default function Home() {
   const { markets, marketOptions, initializeApp, loadOptionsForMarket, isBackendHealthy } =
     useAppStore();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, profile } = useAuthStore();
   const [selectedMarket, setSelectedMarket] = useState<{
     market: Market;
     options: Option[];
@@ -127,7 +127,7 @@ export default function Home() {
         {isAuthenticated && activeTab === "wallet" && (
           <div>
             <h2 className="text-2xl font-bold text-[#151b4d] mb-8">Wallet Management</h2>
-            <WalletManager userId={DEFAULT_USER_ID} />
+            <WalletManager userId={profile?.id || ""} />
           </div>
         )}
 

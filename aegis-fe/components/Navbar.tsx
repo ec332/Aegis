@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+function fmtTs(v: any): string {
+  if (!v) return "-";
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return new Date(v).toLocaleString();
+  if (typeof v === "object" && "seconds" in v) {
+    const s = (v as any).seconds;
+    return new Date(Number(s) * 1000).toLocaleString();
+  }
+  return "-";
+}
 
 export default function Navbar() {
   const { isAuthenticated, profile, wallet, signOut, initAuth } = useAuthStore();
@@ -57,8 +67,8 @@ export default function Navbar() {
                       <div className="mb-1"><span className="font-medium">Wallet:</span> {wallet}</div>
                       <div className="mb-1"><span className="font-medium">Role:</span> {profile?.role}</div>
                       <div className="mb-1"><span className="font-medium">Balance:</span> {profile?.balance}</div>
-                      <div className="mb-1"><span className="font-medium">Created:</span> {profile?.created_at}</div>
-                      <div className="mb-1"><span className="font-medium">Last Login:</span> {profile?.last_login ?? "-"}</div>
+                      <div className="mb-1"><span className="font-medium">Created:</span> {fmtTs(profile?.created_at)}</div>
+                      <div className="mb-1"><span className="font-medium">Last Login:</span> {fmtTs(profile?.last_login)}</div>
                     </div>
                     <div className="mt-3 flex justify-end">
                       <button onClick={handleLogout} className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700">Logout</button>

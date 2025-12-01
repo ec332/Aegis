@@ -179,6 +179,17 @@ func (s *Service) CreateWalletAccount(ctx context.Context, userID string, curren
     return out, nil
 }
 
+func (s *Service) GetWalletAccountByUserCurrency(ctx context.Context, userID string, currency string) (*models.WalletAccount, error) {
+    if userID == "" || currency == "" {
+        return nil, fmt.Errorf("user_id and currency are required")
+    }
+    acc, err := s.repo.GetWalletAccountByUserCurrency(ctx, userID, currency)
+    if err != nil {
+        return nil, fmt.Errorf("get wallet account by user/currency: %w", err)
+    }
+    return acc, nil
+}
+
 func (s *Service) GetWalletAccount(ctx context.Context, id string) (*models.WalletAccount, error) {
     if id == "" {
         return nil, fmt.Errorf("id is required")
@@ -199,4 +210,18 @@ func (s *Service) UpdateWalletBalance(ctx context.Context, walletID string, amou
         return nil, fmt.Errorf("update balance: %w", err)
     }
     return tx, nil
+}
+
+func (s *Service) GetWalletTransactions(ctx context.Context, walletID string, limit, offset int32) ([]models.WalletTransaction, int32, error) {
+    if walletID == "" {
+        return nil, 0, fmt.Errorf("walletID is required")
+    }
+    if limit <= 0 {
+        limit = 50
+    }
+    txs, total, err := s.repo.ListWalletTransactions(ctx, walletID, limit, offset)
+    if err != nil {
+        return nil, 0, fmt.Errorf("list wallet transactions: %w", err)
+    }
+    return txs, total, nil
 }

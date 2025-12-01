@@ -224,6 +224,27 @@ func (s *Server) GetWalletAccount(ctx context.Context, req *wallet.GetWalletAcco
     }}, nil
 }
 
+func (s *Server) GetWalletAccountByUserID(ctx context.Context, req *wallet.GetWalletAccountByUserIDRequest) (*wallet.GetWalletAccountByUserIDResponse, error) {
+    if req.UserId == "" || req.Currency == "" {
+        return nil, status.Error(codes.InvalidArgument, "user_id and currency are required")
+    }
+    acc, err := s.service.GetWalletAccountByUserCurrency(ctx, req.UserId, req.Currency)
+    if err != nil {
+        s.logger.Error("get wallet account by user/currency failed", zap.Error(err))
+        return nil, status.Error(codes.NotFound, "not found")
+    }
+    return &wallet.GetWalletAccountByUserIDResponse{Account: &wallet.WalletAccount{
+        Id:               acc.ID,
+        UserId:           acc.UserID,
+        Currency:         acc.Currency,
+        TotalBalance:     acc.Balance,
+        AvailableBalance: acc.Balance,
+        Status:           acc.Status,
+        CreatedAt:        timestamppb.New(acc.CreatedAt),
+        UpdatedAt:        timestamppb.New(acc.UpdatedAt),
+    }}, nil
+}
+
 func (s *Server) Deposit(ctx context.Context, req *wallet.DepositRequest) (*wallet.DepositResponse, error) {
     if req.AccountId == "" || req.Amount <= 0 {
         return nil, status.Error(codes.InvalidArgument, "account_id and positive amount are required")
@@ -270,4 +291,31 @@ func (s *Server) Withdrawal(ctx context.Context, req *wallet.WithdrawalRequest) 
         CreatedAt:   timestamppb.New(tx.CreatedAt),
         UpdatedAt:   timestamppb.New(tx.UpdatedAt),
     }}, nil
+}
+
+func (s *Server) GetWalletTransactions(ctx context.Context, req *wallet.GetWalletTransactionsRequest) (*wallet.GetWalletTransactionsResponse, error) {
+    if req.AccountId == "" {
+        return nil, status.Error(codes.InvalidArgument, "account_id is required")
+    }
+    limit := req.Limit
+    offset := req.Offset
+    txs, total, err := s.service.GetWalletTransactions(ctx, req.AccountId, limit, offset)
+    if err != nil {
+        s.logger.Error("get wallet transactions failed", zap.Error(err))
+        return nil, status.Error(codes.Internal, "get wallet transactions failed")
+    }
+    out := make([]*wallet.WalletTransaction, 0, len(txs))
+    for _, t := range txs {
+        out = append(out, &wallet.WalletTransaction{
+            Id:          t.ID,
+            WalletId:    t.WalletID,
+            Type:        t.Type,
+            Amount:      t.Amount,
+            Status:      t.Status,
+            ReferenceId: t.Description,
+            CreatedAt:   timestamppb.New(t.CreatedAt),
+            UpdatedAt:   timestamppb.New(t.UpdatedAt),
+        })
+    }
+    return &wallet.GetWalletTransactionsResponse{Transactions: out, Total: total}, nil
 }

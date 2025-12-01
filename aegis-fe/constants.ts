@@ -1,1 +1,1 @@
-export const DEFAULT_USER_ID = "default-user-001";
+export const DEFAULT_USER_ID = "0xTESTUSER";

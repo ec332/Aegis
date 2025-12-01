@@ -261,6 +261,17 @@ export async function withdraw(walletId: string, amount: number, referenceId?: s
   }
 }
 
+export async function fetchWalletTransactions(walletId: string, limit = 50, offset = 0): Promise<{ transactions: WalletTransaction[]; total: number }> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets/${walletId}/transactions?limit=${limit}&offset=${offset}`);
+    const data = await handleResponse<{ transactions: WalletTransaction[]; total: number }>(response);
+    return { transactions: data.transactions || [], total: data.total || 0 };
+  } catch (error) {
+    console.error(`Error fetching wallet transactions ${walletId}:`, error);
+    throw error;
+  }
+}
+
 // Settlement APIs
 export async function createSettlement(marketId: string, winningOptionId: string): Promise<Settlement> {
   try {
@@ -313,9 +324,15 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 // Legacy transaction APIs (for backward compatibility)
-export async function fetchTransactions(): Promise<Transaction[]> {
-  console.warn('fetchTransactions is deprecated. Use wallet transactions instead.');
-  return [];
+export async function fetchUserTransactions(userId: string): Promise<Transaction[]> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/transactions?user_id=${encodeURIComponent(userId)}`);
+    const data = await handleResponse<{ transactions: Transaction[] }>(response);
+    return data.transactions || [];
+  } catch (error) {
+    console.error('Error fetching user transactions:', error);
+    throw error;
+  }
 }
 
 export async function createTransaction(

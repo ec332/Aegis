@@ -23,7 +23,9 @@ import {
   getSettlement as apiGetSettlement,
   completeSettlement as apiCompleteSettlement,
   checkHealth,
+  fetchUserTransactions,
 } from "@/services/api";
+import { fetchWalletTransactions } from "@/services/api";
 
 interface AppState {
   // Markets
@@ -60,6 +62,7 @@ interface AppState {
   updateMarket: (id: string, updates: Partial<Market>) => Promise<Market>;
   loadOptionsForMarket: (marketId: string) => Promise<void>;
   loadTransactions: () => Promise<void>;
+  loadTransactionsForUser: (userId: string) => Promise<void>;
 
   // Wallet actions
   createWallet: (userId: string, currency?: string) => Promise<WalletAccount>;
@@ -67,6 +70,7 @@ interface AppState {
   loadCurrentUserWallet: (userId: string) => Promise<void>;
   depositFunds: (walletId: string, amount: number, referenceId?: string) => Promise<WalletTransaction>;
   withdrawFunds: (walletId: string, amount: number, referenceId?: string) => Promise<WalletTransaction>;
+  loadWalletTransactions: (walletId: string) => Promise<void>;
 
   // Settlement actions
   createSettlement: (marketId: string, winningOptionId: string) => Promise<Settlement>;
@@ -237,6 +241,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  loadTransactionsForUser: async (userId: string) => {
+    set({ isLoadingTransactions: true });
+    try {
+      const txs = await fetchUserTransactions(userId);
+      set({ transactions: txs, isLoadingTransactions: false });
+    } catch (error) {
+      console.error("Error loading transactions for user:", error);
+      set({
+        error: error as APIError,
+        isLoadingTransactions: false
+      });
+    }
+  },
+
   // Wallet actions
   createWallet: async (userId: string, currency: string = 'USD') => {
     try {
@@ -279,6 +297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         currentWallet: wallet,
         isLoadingWallet: false
       });
+      await get().loadWalletTransactions(wallet.id);
     } catch (error) {
       console.error(`Error loading user wallet for ${userId}:`, error);
       set({
@@ -317,6 +336,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error(`Error withdrawing from wallet ${walletId}:`, error);
       set({ error: error as APIError });
       throw error;
+    }
+  },
+
+  loadWalletTransactions: async (walletId: string) => {
+    try {
+      const { transactions } = await fetchWalletTransactions(walletId);
+      set({ walletTransactions: transactions });
+    } catch (error) {
+      console.error(`Error fetching wallet transactions for ${walletId}:`, error);
+      set({ error: error as APIError });
     }
   },
 
