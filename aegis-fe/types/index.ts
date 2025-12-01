@@ -69,14 +69,27 @@ export interface Settlement {
 }
 
 // Legacy Transaction Type - kept for backward compatibility
+export type TransactionType = "BUY" | "SELL" | (string & {});
+
 export interface Transaction {
   id: string;
   user_id: string;
   market_id: string;
   option_id: string;
-  transaction_type: string;
+  transaction_type: TransactionType;
   price: number;
   created_at: string;
+  number_of_shares?: number;
+  price_per_share?: number;
+}
+
+export interface CreateTransactionInput {
+  user_id: string;
+  market_id: string;
+  option_id: string;
+  transaction_type: TransactionType;
+  number_of_shares: number;
+  price_per_share: number;
 }
 
 // API Error Type

@@ -1,25 +1,52 @@
 "use client";
 
-import { Market, Option, Transaction } from "@/types";
+import { DEFAULT_USER_ID } from "@/constants";
+import { createTransaction } from "@/services/api";
+import { useAuthStore } from "@/store/authStore";
+import {
+  Market,
+  Option,
+  Transaction,
+  TransactionType,
+} from "@/types";
 import { useState, useEffect } from "react";
+import type { FormEvent } from "react";
 
 interface TradeModalProps {
   market: Market;
   options: Option[];
   onClose: () => void;
   initialTransaction?: Transaction;
+  userId?: string;
 }
+
+const TRANSACTION_TYPES: TransactionType[] = ["BUY", "SELL"];
 
 export default function TradeModal({
   market,
   options,
   onClose,
   initialTransaction,
+  userId,
 }: TradeModalProps) {
   const [selectedOption, setSelectedOption] = useState<Option | null>(null);
-  const [price, setPrice] = useState<string>(
-    initialTransaction?.price.toString() || ""
+  const [transactionType, setTransactionType] = useState<TransactionType>(
+    initialTransaction?.transaction_type === "SELL" ? "SELL" : "BUY"
   );
+  const [shares, setShares] = useState<string>(
+    initialTransaction?.number_of_shares?.toString() || ""
+  );
+  const [pricePerShare, setPricePerShare] = useState<string>(
+    initialTransaction?.price_per_share?.toString() ||
+      initialTransaction?.price?.toString() ||
+      ""
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const profile = useAuthStore((state) => state.profile);
+  const resolvedUserId = userId || profile?.id || DEFAULT_USER_ID;
 
   // Pre-fill form if editing
   useEffect(() => {
@@ -30,29 +57,96 @@ export default function TradeModal({
       if (option) {
         setSelectedOption(option);
       }
-      setPrice(initialTransaction.price.toString());
+      setShares(
+        initialTransaction.number_of_shares?.toString() ||
+          initialTransaction.price?.toString() ||
+          ""
+      );
+      setPricePerShare(
+        initialTransaction.price_per_share?.toString() ||
+          initialTransaction.price?.toString() ||
+          ""
+      );
+      setTransactionType(
+        initialTransaction.transaction_type === "SELL" ? "SELL" : "BUY"
+      );
+    } else {
+      setShares("");
+      setPricePerShare("");
+      setTransactionType("BUY");
     }
   }, [initialTransaction, options]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Default to the first option when creating a new trade
+  useEffect(() => {
+    if (!initialTransaction && options.length > 0 && !selectedOption) {
+      const defaultOption = options[0];
+      setSelectedOption(defaultOption);
+      if (
+        !pricePerShare &&
+        typeof defaultOption.current_price === "number"
+      ) {
+        setPricePerShare(defaultOption.current_price.toString());
+      }
+    }
+  }, [initialTransaction, options, pricePerShare, selectedOption]);
+
+  // Keep price-per-share pre-filled with the selected option price if empty
+  useEffect(() => {
+    if (
+      selectedOption &&
+      !pricePerShare &&
+      typeof selectedOption.current_price === "number"
+    ) {
+      setPricePerShare(selectedOption.current_price.toString());
+    }
+  }, [pricePerShare, selectedOption]);
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
     if (!selectedOption) {
-      alert("Please select an option");
+      setErrorMessage("Please select an option before placing your trade.");
       return;
     }
-    if (!price || parseFloat(price) <= 0) {
-      alert("Please enter a valid price");
+    if (!resolvedUserId) {
+      setErrorMessage("A valid user ID is required to place a trade.");
       return;
     }
-    console.log("Trade submitted:", {
-      market: market.id,
-      option: selectedOption.id,
-      price: parseFloat(price),
-      isEdit: !!initialTransaction,
-      transactionId: initialTransaction?.id,
-    });
-    // Handle trade submission here
-    onClose();
+    const shareCount = parseInt(shares, 10);
+    if (!shares || Number.isNaN(shareCount) || shareCount <= 0) {
+      setErrorMessage("Enter a valid number of shares (minimum 1).");
+      return;
+    }
+    const parsedPricePerShare = parseFloat(pricePerShare);
+    if (
+      !pricePerShare ||
+      Number.isNaN(parsedPricePerShare) ||
+      parsedPricePerShare <= 0
+    ) {
+      setErrorMessage("Enter a valid price per share greater than 0.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await createTransaction({
+        user_id: resolvedUserId,
+        market_id: market.id,
+        option_id: selectedOption.id,
+        transaction_type: transactionType,
+        number_of_shares: shareCount,
+        price_per_share: parsedPricePerShare,
+      });
+      setSuccessMessage("Trade submitted successfully.");
+      onClose();
+    } catch (err) {
+      const fallback = err instanceof Error ? err.message : null;
+      setErrorMessage(fallback || "Failed to submit trade. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const marketTitle = market.question || (market as any).title || "Untitled Market";
@@ -76,7 +170,7 @@ export default function TradeModal({
         </div>
 
         {/* Content */}
-        <div className="px-4 sm:px-6 py-4">
+        <form className="px-4 sm:px-6 py-4" onSubmit={handleSubmit}>
           {/* Market Details */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-[#151b4d] mb-2">
@@ -88,6 +182,17 @@ export default function TradeModal({
             </div>
           </div>
 
+          {errorMessage && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+              {errorMessage}
+            </div>
+          )}
+          {successMessage && (
+            <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+              {successMessage}
+            </div>
+          )}
+
           {/* Options Selection */}
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-700 mb-3">
@@ -97,6 +202,7 @@ export default function TradeModal({
               {options.map((option, index) => (
                 <button
                   key={option.id}
+                  type="button"
                   onClick={() => setSelectedOption(option)}
                   className={`w-full px-4 py-3 rounded-md border-2 transition-colors font-medium text-left ${
                     selectedOption?.id === option.id
@@ -119,25 +225,75 @@ export default function TradeModal({
             </div>
           </div>
 
+          {/* Transaction type */}
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Transaction Type
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {TRANSACTION_TYPES.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setTransactionType(type)}
+                  className={`rounded-md border px-4 py-3 text-sm font-semibold transition-colors ${
+                    transactionType === type
+                      ? "border-[#151b4d] bg-[#151b4d] text-white"
+                      : "border-gray-200 bg-gray-50 text-gray-700 hover:border-[#151b4d]"
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Price Input */}
           <div className="mb-6">
             <label
-              htmlFor="price"
+              htmlFor="shares"
               className="block text-sm font-semibold text-gray-700 mb-2"
             >
               Number of shares
             </label>
             <input
-              id="price"
+              id="shares"
               type="number"
               step="1"
               min="0"
               placeholder="0"
-              value={price}
+              inputMode="numeric"
+              value={shares}
               onChange={(e) => {
                 const v = e.target.value;
-                if (/^\d*$/.test(v)) {     // allow only digits
-                  setPrice(v);
+                if (/^\d*$/.test(v)) {
+                  setShares(v);
+                }
+              }}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-[#151b4d] focus:ring-2 focus:ring-[#151b4d] focus:ring-opacity-10"
+            />
+          </div>
+
+          {/* Price per share */}
+          <div className="mb-6">
+            <label
+              htmlFor="pricePerShare"
+              className="block text-sm font-semibold text-gray-700 mb-2"
+            >
+              Price per share
+            </label>
+            <input
+              id="pricePerShare"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              inputMode="decimal"
+              value={pricePerShare}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (/^\d*(\.\d{0,4})?$/.test(v)) {
+                  setPricePerShare(v);
                 }
               }}
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-[#151b4d] focus:ring-2 focus:ring-[#151b4d] focus:ring-opacity-10"
@@ -147,20 +303,25 @@ export default function TradeModal({
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
             <button
+              type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors font-medium"
             >
               Cancel
             </button>
             <button
-              onClick={handleSubmit}
-              disabled={!selectedOption}
+              type="submit"
+              disabled={!selectedOption || isSubmitting}
               className="flex-1 px-4 py-2 bg-[#151b4d] text-white rounded-md hover:bg-[#1a2159] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {initialTransaction ? "Update Trade" : "Submit Trade"}
+              {isSubmitting
+                ? "Submitting..."
+                : initialTransaction
+                  ? "Update Trade"
+                  : "Submit Trade"}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

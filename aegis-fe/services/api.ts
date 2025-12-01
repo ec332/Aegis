@@ -24,14 +24,27 @@ export interface Option {
   updated_at?: string;
 }
 
+export type TransactionType = "BUY" | "SELL" | (string & {});
+
 export interface Transaction {
   id: string;
   user_id: string;
   market_id: string;
   option_id: string;
-  transaction_type: string;
+  transaction_type: TransactionType;
   price: number;
   created_at: string;
+  number_of_shares?: number;
+  price_per_share?: number;
+}
+
+export interface CreateTransactionInput {
+  user_id: string;
+  market_id: string;
+  option_id: string;
+  transaction_type: TransactionType;
+  number_of_shares: number;
+  price_per_share: number;
 }
 
 export interface WalletAccount {
@@ -72,14 +85,47 @@ export interface Settlement {
 }
 
 // Error handling and retry logic
-class APIError extends Error {
-  constructor(public status: number, message: string) {
+export class APIError extends Error {
+  constructor(public status: number, message: string, public details?: any) {
     super(message);
     this.name = 'APIError';
   }
 }
 
 import { getStoredToken } from "@/services/auth";
+
+async function buildApiError(response: Response): Promise<APIError> {
+  const defaultMessage = `HTTP ${response.status}: ${response.statusText}`;
+  let message = defaultMessage;
+  let details: any;
+
+  try {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const body = await response.json();
+      details = body;
+      if (body && typeof body === 'object') {
+        const bodyMessage =
+          (typeof body.message === 'string' && body.message) ||
+          (typeof body.error === 'string' && body.error) ||
+          undefined;
+        if (bodyMessage) {
+          message = bodyMessage;
+        }
+      }
+    } else {
+      const text = await response.text();
+      if (text) {
+        details = text;
+        message = text;
+      }
+    }
+  } catch (parseError) {
+    console.warn('Failed to parse error response:', parseError);
+  }
+
+  return new APIError(response.status, message, details);
+}
 
 async function fetchWithRetry(
   url: string,
@@ -107,7 +153,7 @@ async function fetchWithRetry(
 
       if (!response.ok) {
         // Do not retry on most 4xx client errors (except 429 Too Many Requests)
-        const err = new APIError(response.status, `HTTP ${response.status}: ${response.statusText}`);
+        const err = await buildApiError(response);
         if (response.status >= 400 && response.status < 500 && response.status !== 429) {
           throw err;
         }
@@ -359,10 +405,22 @@ export async function fetchUserTransactions(userId: string): Promise<Transaction
 }
 
 export async function createTransaction(
-  transaction: Omit<Transaction, "id">
+  transaction: CreateTransactionInput
 ): Promise<Transaction> {
-  console.warn('createTransaction is deprecated. Use wallet operations instead.');
-  return { ...transaction, id: `tx${Date.now()}` };
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/transactions`, {
+      method: 'POST',
+      body: JSON.stringify(transaction),
+    });
+    const data = await handleResponse<{ transaction?: Transaction } & Partial<Transaction>>(response);
+    if (data && 'transaction' in data && data.transaction) {
+      return data.transaction;
+    }
+    return data as Transaction;
+  } catch (error) {
+    console.error('Error creating transaction:', error);
+    throw error;
+  }
 }
 
 export async function updateTransaction(
