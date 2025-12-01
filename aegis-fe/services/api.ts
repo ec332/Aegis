@@ -235,8 +235,20 @@ export async function getWallet(walletId: string): Promise<WalletAccount | null>
 
 export async function getWalletByUserId(userId: string): Promise<WalletAccount | null> {
   try {
-    const response = await fetchWithRetry(`${API_BASE_URL}/api/wallets/user/${userId}`);
-    const data = await handleResponse<{ account: WalletAccount }>(response);
+    const token = typeof window !== 'undefined' ? getStoredToken() : null;
+    const res = await fetch(`${API_BASE_URL}/api/wallets/user/${userId}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (res.status === 404) {
+      return null;
+    }
+    if (!res.ok) {
+      throw new APIError(res.status, `HTTP ${res.status}: ${res.statusText}`);
+    }
+    const data = await res.json() as { account: WalletAccount | null };
     return data.account || null;
   } catch (error) {
     console.error(`Error fetching wallet by user ${userId}:`, error);

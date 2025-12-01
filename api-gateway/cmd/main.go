@@ -17,6 +17,8 @@ import (
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
 
 	market "github.com/aegis/proto/gen/market"
 	settlement "github.com/aegis/proto/gen/settlement"
@@ -190,14 +192,37 @@ func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r 
 		req.EndTime = timestamppb.New(t)
 	}
 
-	resp, err := g.marketStub.CreateMarket(ctx, &req)
+    resp, err := g.marketStub.CreateMarket(ctx, &req)
 
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "market", "CreateMarket")
-		return
-	}
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "market", "CreateMarket")
+        return
+    }
 
-	g.writeJSONResponse(w, http.StatusCreated, resp)
+    var listResp *market.ListMarketsResponse
+    lr, lerr := g.marketStub.ListMarkets(ctx, &market.ListMarketsRequest{})
+    if lerr == nil {
+        listResp = lr
+    } else {
+        g.logger.Warn("ListMarkets after create failed", zap.Error(lerr))
+    }
+
+    var optsResp *market.GetMarketOptionsResponse
+    if resp != nil && resp.Market != nil && strings.TrimSpace(resp.Market.Id) != "" {
+        or, oerr := g.marketStub.GetMarketOptions(ctx, &market.GetMarketOptionsRequest{MarketId: resp.Market.Id})
+        if oerr == nil {
+            optsResp = or
+        } else {
+            g.logger.Warn("GetMarketOptions after create failed", zap.Error(oerr))
+        }
+    }
+
+    out := map[string]interface{}{
+        "market":  resp.Market,
+        "markets": func() interface{} { if listResp != nil { return listResp.Markets } ; return []interface{}{} }(),
+        "options": func() interface{} { if optsResp != nil { return optsResp.Options } ; return []interface{}{} }(),
+    }
+    g.writeJSONResponse(w, http.StatusCreated, out)
 }
 
 func (g *APIGateway) updateMarket(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -375,6 +400,11 @@ func (g *APIGateway) getWalletByUserID(ctx context.Context, w http.ResponseWrite
     ctx = g.withAuth(ctx, r)
     resp, err := g.walletStub.GetWalletAccountByUserID(ctx, req)
     if err != nil {
+        msg := strings.ToLower(err.Error())
+        if strings.Contains(msg, "not found") {
+            g.writeJSONResponse(w, http.StatusOK, map[string]interface{}{"account": nil})
+            return
+        }
         g.handleGRPCError(ctx, w, err, "wallet", "GetWalletAccountByUserID")
         return
     }
@@ -663,51 +693,76 @@ func (g *APIGateway) completeSettlement(ctx context.Context, w http.ResponseWrit
 }
 
 func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter, err error, service, method string) {
+    st, ok := status.FromError(err)
+    code := codes.Unknown
+    if ok {
+        code = st.Code()
+    }
+
+    if service == "wallet" && method == "GetWalletAccountByUserID" && code == codes.NotFound {
+        g.writeJSONResponse(w, http.StatusOK, map[string]interface{}{"account": nil})
+        return
+    }
+
     g.logger.Error("gRPC call failed",
         zap.String("service", service),
         zap.String("method", method),
+        zap.String("code", code.String()),
         zap.Error(err),
     )
 
-	// Check if this was a circuit breaker or timeout error that triggered Kafka fallback
-	if strings.Contains(err.Error(), "circuit breaker open") || strings.Contains(err.Error(), "timeout") {
-		// Send to Kafka for async processing
-		topic := fmt.Sprintf("%s.%s.fallback", service, method)
-		message := map[string]interface{}{
-			"service":   service,
-			"method":    method,
-			"timestamp": time.Now().Unix(),
-			"error":     err.Error(),
-		}
+    if code == codes.Unavailable || code == codes.DeadlineExceeded ||
+        strings.Contains(strings.ToLower(err.Error()), "circuit breaker open") || strings.Contains(strings.ToLower(err.Error()), "timeout") {
+        topic := fmt.Sprintf("%s.%s.fallback", service, method)
+        message := map[string]interface{}{
+            "service":   service,
+            "method":    method,
+            "timestamp": time.Now().Unix(),
+            "error":     err.Error(),
+        }
 
-		if g.kafkaProducer != nil {
-			if kafkaErr := g.kafkaProducer.Publish(ctx, topic, fmt.Sprintf("%s_%s", service, method), message); kafkaErr != nil {
-				g.logger.Error("Failed to send fallback message to Kafka",
-					zap.String("topic", topic),
-					zap.Error(kafkaErr),
-				)
-			}
-		}
+        if g.kafkaProducer != nil {
+            if kafkaErr := g.kafkaProducer.Publish(ctx, topic, fmt.Sprintf("%s_%s", service, method), message); kafkaErr != nil {
+                g.logger.Error("Failed to send fallback message to Kafka",
+                    zap.String("topic", topic),
+                    zap.Error(kafkaErr),
+                )
+            }
+        }
 
-		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "accepted",
-			"message": "Request queued for async processing",
-		})
-		return
-	}
+        w.WriteHeader(http.StatusAccepted)
+        json.NewEncoder(w).Encode(map[string]string{
+            "status":  "accepted",
+            "message": "Request queued for async processing",
+        })
+        return
+    }
 
-    // Convert gRPC error to HTTP status
-    status := http.StatusInternalServerError
-    if strings.Contains(err.Error(), "Unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "unauthenticated") || strings.Contains(strings.ToLower(err.Error()), "authorization required") || strings.Contains(strings.ToLower(err.Error()), "invalid token") {
-        status = http.StatusUnauthorized
-    } else if strings.Contains(err.Error(), "not found") {
-        status = http.StatusNotFound
-	} else if strings.Contains(err.Error(), "invalid") {
-		status = http.StatusBadRequest
-	}
+    httpStatus := http.StatusInternalServerError
+    switch code {
+    case codes.Unauthenticated:
+        httpStatus = http.StatusUnauthorized
+    case codes.PermissionDenied:
+        httpStatus = http.StatusForbidden
+    case codes.NotFound:
+        httpStatus = http.StatusNotFound
+    case codes.InvalidArgument, codes.FailedPrecondition, codes.OutOfRange:
+        httpStatus = http.StatusBadRequest
+    case codes.AlreadyExists, codes.Aborted:
+        httpStatus = http.StatusConflict
+    case codes.ResourceExhausted:
+        httpStatus = http.StatusTooManyRequests
+    case codes.Unavailable:
+        httpStatus = http.StatusServiceUnavailable
+    case codes.DeadlineExceeded:
+        httpStatus = http.StatusGatewayTimeout
+    case codes.Canceled:
+        httpStatus = 499
+    default:
+        httpStatus = http.StatusInternalServerError
+    }
 
-	http.Error(w, err.Error(), status)
+    http.Error(w, err.Error(), httpStatus)
 }
 
 func (g *APIGateway) handleTransactionRequest(w http.ResponseWriter, r *http.Request) {
@@ -900,6 +955,22 @@ func main() {
 		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           300,
+        AllowedOriginValidator: func(r *http.Request, origin string) bool {
+            o := strings.ToLower(strings.TrimSpace(origin))
+            if o == "" {
+                return false
+            }
+            if strings.HasPrefix(o, "http://localhost") || strings.HasPrefix(o, "https://localhost") {
+                return true
+            }
+            if strings.HasPrefix(o, "http://127.0.0.1") || strings.HasPrefix(o, "https://127.0.0.1") {
+                return true
+            }
+            if strings.HasPrefix(o, "http://0.0.0.0") || strings.HasPrefix(o, "https://0.0.0.0") {
+                return true
+            }
+            return false
+        },
 	})
 
 	handler := corsMiddleware(router)

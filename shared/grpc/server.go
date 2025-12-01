@@ -54,14 +54,24 @@ func UnaryServerInterceptor(logger *zap.Logger, metrics *ServerMetrics) grpc.Una
 		
 		if err != nil {
 			metrics.errorCounter.Inc()
-			
 			st, _ := status.FromError(err)
-			logger.Error("gRPC request failed",
-				zap.String("method", info.FullMethod),
-				zap.Duration("duration", duration),
-				zap.String("code", st.Code().String()),
-				zap.String("message", st.Message()),
-				zap.Error(err))
+			code := st.Code()
+			switch code {
+			case codes.NotFound, codes.InvalidArgument, codes.FailedPrecondition, codes.AlreadyExists, codes.OutOfRange, codes.Unauthenticated, codes.PermissionDenied:
+				logger.Warn("gRPC request failed",
+					zap.String("method", info.FullMethod),
+					zap.Duration("duration", duration),
+					zap.String("code", code.String()),
+					zap.String("message", st.Message()),
+					zap.Error(err))
+			default:
+				logger.Error("gRPC request failed",
+					zap.String("method", info.FullMethod),
+					zap.Duration("duration", duration),
+					zap.String("code", code.String()),
+					zap.String("message", st.Message()),
+					zap.Error(err))
+			}
 		} else {
 			logger.Info("gRPC request completed",
 				zap.String("method", info.FullMethod),
@@ -91,14 +101,24 @@ func StreamServerInterceptor(logger *zap.Logger, metrics *ServerMetrics) grpc.St
 		
 		if err != nil {
 			metrics.errorCounter.Inc()
-			
 			st, _ := status.FromError(err)
-			logger.Error("gRPC stream request failed",
-				zap.String("method", info.FullMethod),
-				zap.Duration("duration", duration),
-				zap.String("code", st.Code().String()),
-				zap.String("message", st.Message()),
-				zap.Error(err))
+			code := st.Code()
+			switch code {
+			case codes.NotFound, codes.InvalidArgument, codes.FailedPrecondition, codes.AlreadyExists, codes.OutOfRange, codes.Unauthenticated, codes.PermissionDenied:
+				logger.Warn("gRPC stream request failed",
+					zap.String("method", info.FullMethod),
+					zap.Duration("duration", duration),
+					zap.String("code", code.String()),
+					zap.String("message", st.Message()),
+					zap.Error(err))
+			default:
+				logger.Error("gRPC stream request failed",
+					zap.String("method", info.FullMethod),
+					zap.Duration("duration", duration),
+					zap.String("code", code.String()),
+					zap.String("message", st.Message()),
+					zap.Error(err))
+			}
 		} else {
 			logger.Info("gRPC stream request completed",
 				zap.String("method", info.FullMethod),

@@ -21,6 +21,7 @@ export default function WalletManager({ userId }: { userId: string }) {
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [creatingWallet, setCreatingWallet] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
@@ -137,11 +138,18 @@ export default function WalletManager({ userId }: { userId: string }) {
                   alert('Please sign in first');
                   return;
                 }
-                await createWalletForUser(userId);
+                if (creatingWallet) return;
+                setCreatingWallet(true);
+                try {
+                  await createWalletForUser(userId);
+                } finally {
+                  setCreatingWallet(false);
+                }
               }}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+              className={`bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors ${creatingWallet ? 'opacity-60 cursor-not-allowed' : ''}`}
+              disabled={creatingWallet}
             >
-              Create Wallet
+              {creatingWallet ? 'Creating…' : 'Create Wallet'}
             </button>
           </div>
         )}
