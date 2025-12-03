@@ -11,13 +11,11 @@ resource "google_cloud_run_service" "main" {
       containers {
         image = var.image
 
-        env {
-          dynamic "block" {
-            for_each = var.env_vars
-            content {
-              name  = block.key
-              value = block.value
-            }
+        dynamic "env" {
+          for_each = var.env_vars
+          content {
+            name  = env.key
+            value = env.value
           }
         }
 
@@ -29,12 +27,13 @@ resource "google_cloud_run_service" "main" {
         }
       }
 
-      dynamic "vpc_access" {
-        for_each = var.vpc_connector != null ? [1] : []
-        content {
-          connector = var.vpc_connector
-        }
-      }
+      # vpc_access block removed due to dynamic block issue
+      # dynamic "vpc_access" {
+      #   for_each = var.vpc_connector != null && var.vpc_connector != "" ? [1] : []
+      #   content {
+      #     connector = var.vpc_connector
+      #   }
+      # }
     }
 
     metadata {
@@ -42,7 +41,7 @@ resource "google_cloud_run_service" "main" {
         {
           "autoscaling.knative.dev/maxScale" = var.max_instances != null ? tostring(var.max_instances) : "100"
           "autoscaling.knative.dev/minScale" = var.min_instances != null ? tostring(var.min_instances) : "0"
-          "run.googleapis.com/ingress"         = var.ingress
+          "run.googleapis.com/ingress"       = var.ingress
         },
         var.annotations
       )
@@ -63,6 +62,13 @@ resource "google_cloud_run_service" "main" {
       template[0].metadata[0].annotations["run.googleapis.com/client-version"],
     ]
   }
+}
+
+resource "google_service_account" "main" {
+  count        = var.service_account_email == "" ? 1 : 0
+  account_id   = "${var.service_name}-sa"
+  display_name = "Service account for ${var.service_name}"
+  project      = var.project_id
 }
 
 locals {
