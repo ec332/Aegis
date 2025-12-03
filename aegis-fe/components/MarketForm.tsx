@@ -29,7 +29,7 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
         body: JSON.stringify({
           question,
           description,
-          end_time: resolutionDatetime,
+          end_time: resolutionDatetime ? new Date(resolutionDatetime).toISOString() : "",
           options: [option1, option2],
         }),
       });
@@ -110,8 +110,8 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
         <span>Resolution datetime</span>
         <input
           type="datetime-local"
-          value={resolutionDatetime ? resolutionDatetime.slice(0, 16) : ""}
-          onChange={(e) => setResolutionDatetime(new Date(e.target.value).toISOString())}
+          value={resolutionDatetime}
+          onChange={(e) => setResolutionDatetime(e.target.value)}
           required
           className="rounded border px-3 py-2"
         />
