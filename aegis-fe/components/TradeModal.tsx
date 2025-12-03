@@ -8,7 +8,7 @@ import {
   Transaction,
   TransactionType,
 } from "@/types";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "@/store/appStore";
 import { fetchUserTransactionsForMarket } from "@/services/api";
 import type { FormEvent } from "react";
@@ -30,6 +30,8 @@ export default function TradeModal({
   initialTransaction,
   userId,
 }: TradeModalProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const firstFocusableRef = useRef<HTMLButtonElement | null>(null);
   const [selectedOption, setSelectedOption] = useState<Option | null>(null);
   const [transactionType, setTransactionType] = useState<TransactionType>(
     initialTransaction?.transaction_type === "SELL" ? "SELL" : "BUY"
@@ -196,6 +198,38 @@ export default function TradeModal({
     }
   };
 
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    const focusables = el.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusables[0] || firstFocusableRef.current;
+    first?.focus();
+    const keyHandler = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        onClose();
+      } else if (ev.key === "Tab") {
+        const f = Array.from(focusables);
+        if (f.length === 0) return;
+        const idx = f.indexOf(document.activeElement as HTMLElement);
+        if (ev.shiftKey) {
+          if (idx <= 0) {
+            ev.preventDefault();
+            f[f.length - 1].focus();
+          }
+        } else {
+          if (idx === f.length - 1) {
+            ev.preventDefault();
+            f[0].focus();
+          }
+        }
+      }
+    };
+    el.addEventListener("keydown", keyHandler);
+    return () => el.removeEventListener("keydown", keyHandler);
+  }, [onClose]);
+
   const handleSelectOption = (opt: Option) => {
     setSelectedOption(opt);
   };
@@ -205,16 +239,28 @@ export default function TradeModal({
   const optionLabel = (option: Option) => option.option_text || (option as any).title || "Option";
 
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-[640px] sm:max-w-md max-h-[85vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="trade-modal-title"
+      ref={dialogRef}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-[640px] sm:max-w-md max-h-[85vh] overflow-y-auto" onMouseDown={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-[#151b4d]">
+          <h2 id="trade-modal-title" className="text-xl font-bold text-[#151b4d]">
             {initialTransaction ? "Edit Trade" : "Place Trade"}
           </h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            aria-label="Close trade modal"
           >
             ×
           </button>
@@ -246,10 +292,10 @@ export default function TradeModal({
 
           {/* Options Selection */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
+            <label className="block text-sm font-semibold text-gray-700 mb-3" id="select-option-label">
               Select Option
             </label>
-            <div className="space-y-2">
+            <div className="space-y-2" role="group" aria-labelledby="select-option-label">
               {options.map((option, index) => (
                 <button
                   key={option.id}
@@ -262,6 +308,7 @@ export default function TradeModal({
                         : "bg-[#8a704d] text-white border-[#8a704d]"
                       : "bg-gray-50 text-gray-700 border-gray-200 hover:border-[#151b4d]"
                   }`}
+                  aria-pressed={selectedOption?.id === option.id}
                 >
                   <div className="flex flex-col">
                     <span>{optionLabel(option)}</span>
@@ -295,6 +342,7 @@ export default function TradeModal({
                       ? "border-[#151b4d] bg-[#151b4d] text-white"
                       : "border-gray-200 bg-gray-50 text-gray-700 hover:border-[#151b4d]"
                   }`}
+                  aria-pressed={transactionType === type}
                 >
                   {type}
                 </button>
@@ -336,6 +384,7 @@ export default function TradeModal({
               type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors font-medium"
+              aria-label="Cancel"
             >
               Cancel
             </button>
@@ -343,6 +392,8 @@ export default function TradeModal({
               type="submit"
               disabled={!selectedOption || isSubmitting}
               className="flex-1 px-4 py-2 bg-[#151b4d] text-white rounded-md hover:bg-[#1a2159] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-busy={isSubmitting}
+              ref={firstFocusableRef}
             >
               {isSubmitting
                 ? "Submitting..."

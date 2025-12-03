@@ -269,14 +269,10 @@ func (g *APIGateway) getMarket(ctx context.Context, w http.ResponseWriter, r *ht
 }
 
 func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	g.logger.Info("HTTP request",
-		zap.String("method", r.Method),
-		zap.String("path", r.URL.Path),
-		zap.String("remote", r.RemoteAddr))
-
-	bodyBytes, _ := io.ReadAll(r.Body)
-	g.logger.Info("Request body", zap.String("body", string(bodyBytes)))
-	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+    g.logger.Info("HTTP request",
+        zap.String("method", r.Method),
+        zap.String("path", r.URL.Path),
+        zap.String("remote", r.RemoteAddr))
 
 	var body struct {
 		Question    string   `json:"question"`
@@ -303,6 +299,10 @@ func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r 
 		req.EndTime = timestamppb.New(t)
 	}
 
+    g.logger.Info("CreateMarket request",
+        zap.String("question", strings.TrimSpace(body.Question)),
+        zap.Int("options_count", len(body.Options)))
+
     resp, err := g.marketStub.CreateMarket(ctx, &req)
 
     if err != nil {
@@ -325,6 +325,8 @@ func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r 
             if cursor == 0 { break }
         }
     }
+    g.logger.Info("CreateMarket success",
+        zap.String("market_id", resp.Market.GetId()))
     g.writeJSONResponse(w, http.StatusCreated, out)
 }
 

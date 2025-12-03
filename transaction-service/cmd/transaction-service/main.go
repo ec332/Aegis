@@ -31,6 +31,8 @@ func main() {
     viper.SetDefault("DB_USER", "postgres")
     viper.SetDefault("DB_PASSWORD", "postgres")
     viper.SetDefault("MARKET_GRPC_ADDR", "localhost:50051")
+    viper.SetDefault("MARKET_SERVICE_GRPC_ADDR", "market-service:50051")
+    viper.SetDefault("WALLET_GRPC_ADDR", "wallet-service:50052")
     viper.SetDefault("WALLET_SERVICE_GRPC_ADDR", "wallet-service:50052")
     viper.SetDefault("WALLET_DEFAULT_CURRENCY", "USD")
 
@@ -57,7 +59,10 @@ func main() {
     defer pool.Close()
 
     // Create market gRPC client
-    marketAddr := viper.GetString("MARKET_GRPC_ADDR")
+    marketAddr := firstNonEmpty(
+        viper.GetString("MARKET_SERVICE_GRPC_ADDR"),
+        viper.GetString("MARKET_GRPC_ADDR"),
+    )
     marketConn, err := grpc.Dial(marketAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
     if err != nil {
         logger.Fatal("failed to connect to market service", zap.String("addr", marketAddr), zap.Error(err))
@@ -68,7 +73,10 @@ func main() {
     logger.Info("connected to market service", zap.String("addr", marketAddr))
 
     // Create wallet gRPC client
-    walletAddr := viper.GetString("WALLET_SERVICE_GRPC_ADDR")
+    walletAddr := firstNonEmpty(
+        viper.GetString("WALLET_SERVICE_GRPC_ADDR"),
+        viper.GetString("WALLET_GRPC_ADDR"),
+    )
     walletConn, err := grpc.Dial(walletAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
     if err != nil {
         logger.Fatal("failed to connect to wallet service", zap.String("addr", walletAddr), zap.Error(err))
@@ -97,4 +105,13 @@ func main() {
         logger.Fatal("failed to serve", zap.Error(err))
     }
     _ = os.Stderr
+}
+
+func firstNonEmpty(values ...string) string {
+    for _, v := range values {
+        if v != "" {
+            return v
+        }
+    }
+    return ""
 }

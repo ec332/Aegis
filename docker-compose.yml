@@ -19,6 +19,20 @@ services:
       timeout: 3s
       retries: 10
 
+  db-migrations:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: postgres
+      DB_HOST: postgres
+      DB_NAME: postgres
+      DB_USER: postgres
+    volumes:
+      - ./:/work:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "/work/scripts/run-migrations.sh"]
+
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka
@@ -67,6 +81,10 @@ services:
       CORS_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
       CORS_HEADERS: "Accept,Content-Type,Authorization"
     depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrations:
+        condition: service_completed_successfully
       market-service:
         condition: service_started
       wallet-service:
@@ -94,10 +112,13 @@ services:
       APP_DB_USER: postgres
       APP_DB_PASSWORD: postgres
       APP_MARKET_GRPC_ADDR: market-service:50051
+      APP_MARKET_SERVICE_GRPC_ADDR: market-service:50051
       APP_WALLET_SERVICE_GRPC_ADDR: wallet-service:50052
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrations:
+        condition: service_completed_successfully
       market-service:
         condition: service_started
     # internal-only; requests go through API Gateway
@@ -115,6 +136,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrations:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     # internal-only; requests go through API Gateway
@@ -146,6 +169,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrations:
+        condition: service_completed_successfully
     # internal-only; requests go through API Gateway
 
   wallet-service:
@@ -166,6 +191,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrations:
+        condition: service_completed_successfully
     # internal-only; requests go through API Gateway
 
 volumes:

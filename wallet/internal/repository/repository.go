@@ -9,6 +9,7 @@ import (
     "aegis/wallet/pkg/models"
 
     _ "github.com/lib/pq"
+    "github.com/google/uuid"
 )
 
 // Repository handles database operations
@@ -232,7 +233,7 @@ func (r *Repository) GetWalletAccount(ctx context.Context, id string) (*models.W
     return acc, nil
 }
 
-func (r *Repository) UpdateWalletBalanceAndCreateTransaction(ctx context.Context, walletID string, amount float64, txType string, description string) (*models.WalletTransaction, float64, error) {
+func (r *Repository) UpdateWalletBalanceAndCreateTransaction(ctx context.Context, walletID string, amount float64, txType string, referenceID string) (*models.WalletTransaction, float64, error) {
     tx, err := r.db.BeginTx(ctx, nil)
     if err != nil {
         return nil, 0, fmt.Errorf("begin tx: %w", err)
@@ -254,21 +255,21 @@ func (r *Repository) UpdateWalletBalanceAndCreateTransaction(ctx context.Context
     if err != nil {
         return nil, 0, fmt.Errorf("update balance: %w", err)
     }
-    id := fmt.Sprintf("t-%d", time.Now().UnixNano())
+    id := uuid.New().String()
     now := time.Now()
-    _, err = tx.ExecContext(ctx, `INSERT INTO wallet_transactions (id, wallet_id, type, amount, balance_after, description, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, id, walletID, txType, amount, newBalance, description, "completed", now)
+    _, err = tx.ExecContext(ctx, `INSERT INTO wallet_transactions (id, wallet_id, type, amount, balance_after, reference_id, description, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, id, walletID, txType, amount, newBalance, referenceID, referenceID, "completed", now)
     if err != nil {
         return nil, 0, fmt.Errorf("insert transaction: %w", err)
     }
     if err = tx.Commit(); err != nil {
         return nil, 0, fmt.Errorf("commit: %w", err)
     }
-    return &models.WalletTransaction{ID: id, WalletID: walletID, Type: txType, Amount: amount, BalanceAfter: newBalance, Description: description, Status: "completed", CreatedAt: now, UpdatedAt: now}, newBalance, nil
+    return &models.WalletTransaction{ID: id, WalletID: walletID, Type: txType, Amount: amount, BalanceAfter: newBalance, ReferenceID: referenceID, Description: referenceID, Status: "completed", CreatedAt: now, UpdatedAt: now}, newBalance, nil
 }
 
 func (r *Repository) ListWalletTransactions(ctx context.Context, walletID string, limit, offset int32) ([]models.WalletTransaction, int32, error) {
     rows, err := r.db.QueryContext(ctx, `
-        SELECT id, wallet_id, type, amount, balance_after, description, status, created_at
+        SELECT id, wallet_id, type, amount, balance_after, reference_id, description, status, created_at
         FROM wallet_transactions
         WHERE wallet_id = $1
         ORDER BY created_at DESC
@@ -281,7 +282,7 @@ func (r *Repository) ListWalletTransactions(ctx context.Context, walletID string
     var list []models.WalletTransaction
     for rows.Next() {
         var t models.WalletTransaction
-        if err := rows.Scan(&t.ID, &t.WalletID, &t.Type, &t.Amount, &t.BalanceAfter, &t.Description, &t.Status, &t.CreatedAt); err != nil {
+        if err := rows.Scan(&t.ID, &t.WalletID, &t.Type, &t.Amount, &t.BalanceAfter, &t.ReferenceID, &t.Description, &t.Status, &t.CreatedAt); err != nil {
             return nil, 0, fmt.Errorf("scan wallet transaction: %w", err)
         }
         t.UpdatedAt = t.CreatedAt
