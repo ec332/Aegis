@@ -10,7 +10,6 @@ import (
 
     wallet "github.com/aegis/proto/gen/wallet"
     grpcserver "github.com/aegis/shared/grpc"
-    "github.com/aegis/shared/metrics"
     "go.uber.org/zap"
     "google.golang.org/grpc"
     "google.golang.org/grpc/health"
@@ -45,15 +44,14 @@ func main() {
     svc := service.New(repo, logger)
     tm := auth.NewTokenManager()
 
-    metricsRegistry := metrics.NewRegistry(logger)
     grpcServer := grpc.NewServer(
         grpc.ChainUnaryInterceptor(
             wgrpc.AuthUnaryInterceptor(logger, tm),
-            grpcserver.UnaryServerInterceptor(logger, grpcserver.NewServerMetrics("wallet", metricsRegistry)),
+            grpcserver.UnaryServerInterceptor(logger, nil),
             grpcserver.RecoveryInterceptor(logger),
         ),
         grpc.ChainStreamInterceptor(
-            grpcserver.StreamServerInterceptor(logger, grpcserver.NewServerMetrics("wallet", metricsRegistry)),
+            grpcserver.StreamServerInterceptor(logger, nil),
             grpcserver.StreamRecoveryInterceptor(logger),
         ),
     )

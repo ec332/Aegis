@@ -38,5 +38,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_wallet_accounts_user_id ON wallet_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_wallet_accounts_user_currency ON wallet_accounts(user_id, currency);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_wallet_id ON wallet_transactions(wallet_id);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_created_at ON wallet_transactions(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_transactions_reference_id ON wallet_transactions(description);

@@ -1,15 +1,14 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"log"
-	"time"
+    "context"
+    "errors"
+    "log"
+    "time"
 
 	"github.com/aegis/shared/circuitbreaker"
 	"github.com/aegis/shared/grpc"
 	"github.com/aegis/shared/kafka"
-	"github.com/aegis/shared/metrics"
 	"go.uber.org/zap"
 )
 
@@ -23,7 +22,6 @@ func main() {
 	defer logger.Sync()
 
 	// Initialize metrics registry
-	metricsRegistry := metrics.NewRegistry(logger)
 
 	// Configure the resilient client for Market Service
 	marketConfig := grpc.DefaultClientConfig("market", "localhost:50051")
@@ -38,7 +36,7 @@ func main() {
 	}
 
 	// Create market service client
-	marketClient, err := grpc.NewResilientClient(marketConfig, logger, metricsRegistry)
+    marketClient, err := grpc.NewResilientClient(marketConfig, logger)
 	if err != nil {
 		logger.Fatal("Failed to create market client", zap.Error(err))
 	}
@@ -82,16 +80,14 @@ func main() {
 		zap.String("state", cb.GetState().String()))
 
 	// Check metrics
-	serviceMetrics := marketClient.GetMetrics()
-	logger.Info("Service metrics collected",
-		zap.Any("metrics", serviceMetrics))
+    // metrics removed
 
 	// Configure wallet service client
 	walletConfig := grpc.DefaultClientConfig("wallet", "localhost:50052")
 	walletConfig.Timeout = 1 * time.Second
 	walletConfig.KafkaFallback = true
 
-	walletClient, err := grpc.NewResilientClient(walletConfig, logger, metricsRegistry)
+    walletClient, err := grpc.NewResilientClient(walletConfig, logger)
 	if err != nil {
 		logger.Fatal("Failed to create wallet client", zap.Error(err))
 	}

@@ -72,11 +72,14 @@ func NewCircuitBreaker(name string, config Config, logger *zap.Logger) *CircuitB
 }
 
 func (cb *CircuitBreaker) Execute(ctx context.Context, fn func() error) error {
-	if !cb.allowRequest() {
-		return ErrCircuitOpen
-	}
+    if !cb.allowRequest() {
+        return ErrCircuitOpen
+    }
 
-	defer cb.onCallFinished()
+    cb.mu.Lock()
+    cb.calls++
+    cb.mu.Unlock()
+    defer cb.onCallFinished()
 
 	err := fn()
 	if err != nil {

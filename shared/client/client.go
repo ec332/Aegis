@@ -1,13 +1,12 @@
 package client
 
 import (
-	"context"
-	"fmt"
-	"time"
+    "context"
+    "fmt"
+    "time"
 
 	"github.com/aegis/shared/circuitbreaker"
 	"github.com/aegis/shared/kafka"
-	"github.com/aegis/shared/metrics"
 	"github.com/aegis/shared/retry"
 	"github.com/aegis/shared/utils"
 	"go.uber.org/zap"
@@ -15,13 +14,12 @@ import (
 
 // ServiceClient provides a resilient client for inter-service communication
 type ServiceClient struct {
-	name           string
-	baseURL        string
-	circuitBreaker *circuitbreaker.CircuitBreaker
-	kafkaProducer  *kafka.Producer
-	metrics        *metrics.ServiceMetrics
-	logger         *zap.Logger
-	httpClient     *HTTPClient // We'll implement this separately
+    name           string
+    baseURL        string
+    circuitBreaker *circuitbreaker.CircuitBreaker
+    kafkaProducer  *kafka.Producer
+    logger         *zap.Logger
+    httpClient     *HTTPClient // We'll implement this separately
 }
 
 // ClientConfig holds configuration for the service client
@@ -54,7 +52,7 @@ func DefaultClientConfig(serviceName, baseURL string) ClientConfig {
 }
 
 // NewServiceClient creates a new resilient service client
-func NewServiceClient(config ClientConfig, logger *zap.Logger, metricsRegistry *metrics.Registry) (*ServiceClient, error) {
+func NewServiceClient(config ClientConfig, logger *zap.Logger) (*ServiceClient, error) {
 	// Create HTTP client
 	httpClient, err := NewHTTPClient(config.Timeout, logger)
 	if err != nil {
@@ -70,18 +68,14 @@ func NewServiceClient(config ClientConfig, logger *zap.Logger, metricsRegistry *
 		kafkaProducer = kafka.NewProducer(config.KafkaConfig, logger)
 	}
 
-	// Create service metrics
-	serviceMetrics := metrics.NewServiceMetrics(config.ServiceName, metricsRegistry)
-
-	return &ServiceClient{
-		name:           config.ServiceName,
-		baseURL:        config.BaseURL,
-		circuitBreaker: cb,
-		kafkaProducer:  kafkaProducer,
-		metrics:        serviceMetrics,
-		logger:         logger,
-		httpClient:     httpClient,
-	}, nil
+    return &ServiceClient{
+        name:           config.ServiceName,
+        baseURL:        config.BaseURL,
+        circuitBreaker: cb,
+        kafkaProducer:  kafkaProducer,
+        logger:         logger,
+        httpClient:     httpClient,
+    }, nil
 }
 
 // Call makes a resilient HTTP call to another service
@@ -114,10 +108,8 @@ func (c *ServiceClient) callWithTimeout(ctx context.Context, method, path string
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	// Make HTTP call and record metrics
-	err := c.metrics.RecordRequest(fmt.Sprintf("%s_%s", method, path), func() error {
-		return c.httpClient.Call(ctx, method, c.baseURL+path, body, result)
-	})
+    // Make HTTP call
+    err := c.httpClient.Call(ctx, method, c.baseURL+path, body, result)
 
 	if err != nil {
 		// Check if this is a timeout or service unavailable error
@@ -189,7 +181,7 @@ func (c *ServiceClient) fallbackToKafka(method, path string, body interface{}, o
 		zap.String("path", path),
 		zap.String("topic", topic))
 
-	c.metrics.RecordCircuitBreakerOperation("kafka_fallback")
+    // metrics removed
 	
 	// Return a specific error indicating fallback was used
 	return utils.NewKafkaFallbackError(originalErr)

@@ -99,8 +99,31 @@ func (s *TransactionGRPCServer) CreateTransaction(ctx context.Context, req *tran
         CreatedAt:       time.Now().UTC(),
     }
 
-    // Compute amount = price_per_share * number_of_shares
-    amount := transactionModel.PricePerShare.Mul(transactionModel.NumberOfShares).InexactFloat64()
+	// Compute amount = price_per_share * number_of_shares
+	amount := transactionModel.PricePerShare.Mul(transactionModel.NumberOfShares).InexactFloat64()
+
+	// If SELL, validate user has sufficient shares for this market option
+	if req.TransactionType == transaction.TransactionType_SELL {
+		userTxs, err := s.svc.FindByUserID(ctx, uuid.MustParse(req.UserId))
+		if err != nil {
+			s.logger.Error("failed to load user transactions", zap.Error(err))
+			return nil, status.Error(codes.Internal, "failed to validate holdings")
+		}
+		var held int64
+		for _, t := range userTxs {
+			if t.MarketID.String() == req.MarketId && t.OptionID.String() == req.OptionId {
+				shares := t.NumberOfShares.IntPart()
+				if strings.EqualFold(t.TransactionType, "SELL") {
+					held -= shares
+				} else {
+					held += shares
+				}
+			}
+		}
+		if int64(req.NumberOfShares) > held {
+			return nil, status.Error(codes.FailedPrecondition, "insufficient shares")
+		}
+	}
 
     // Resolve user's wallet account by currency
     currency := s.defaultCurrency
@@ -165,8 +188,8 @@ func (s *TransactionGRPCServer) CreateTransaction(ctx context.Context, req *tran
 }
 
 func (s *TransactionGRPCServer) GetTransactions(ctx context.Context, req *transaction.GetTransactionsRequest) (*transaction.GetTransactionsResponse, error) {
-	var transactions []model.Transaction
-	var err error
+    var transactions []model.Transaction
+    var err error
 
 	// Apply filters if provided
 	if req.UserId != nil && *req.UserId != "" {
@@ -182,9 +205,19 @@ func (s *TransactionGRPCServer) GetTransactions(ctx context.Context, req *transa
 		return nil, status.Error(codes.Internal, "failed to get transactions")
 	}
 
-    // Convert to protobuf response
-    protoTransactions := make([]*transaction.Transaction, len(transactions))
-    for i, t := range transactions {
+    total := len(transactions)
+    limit := int(req.GetLimit())
+    offset := int(req.GetOffset())
+    if limit <= 0 { limit = total }
+    if offset < 0 { offset = 0 }
+    start := offset
+    if start > total { start = total }
+    end := start + limit
+    if end > total { end = total }
+    page := transactions[start:end]
+
+    protoTransactions := make([]*transaction.Transaction, len(page))
+    for i, t := range page {
         protoTransactions[i] = &transaction.Transaction{
             Id:              t.ID.String(),
             MarketId:        t.MarketID.String(),
@@ -197,9 +230,10 @@ func (s *TransactionGRPCServer) GetTransactions(ctx context.Context, req *transa
         }
     }
 
-	return &transaction.GetTransactionsResponse{
-		Transactions: protoTransactions,
-	}, nil
+    return &transaction.GetTransactionsResponse{
+        Transactions: protoTransactions,
+        Total:        int32(total),
+    }, nil
 }
 
 func mapTransactionType(transactionType string) transaction.TransactionType {

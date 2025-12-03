@@ -22,7 +22,6 @@ import (
 	market "github.com/aegis/proto/gen/market"
 	settlement "github.com/aegis/proto/gen/settlement"
 	wallet "github.com/aegis/proto/gen/wallet"
-	"github.com/aegis/shared/metrics"
 )
 
 // Mock Kafka producer
@@ -250,22 +249,20 @@ func (m *mockSettlementService) ProcessPayout(ctx context.Context, req *settleme
 
 // Test setup helpers
 func setupTestGateway(t *testing.T) (*APIGateway, *mockMarketService, *mockWalletService, *mockSettlementService, *mockKafkaProducer) {
-	logger, _ := zap.NewDevelopment()
-	metricsRegistry := metrics.NewRegistry(logger)
+    logger, _ := zap.NewDevelopment()
 
-	marketMock := &mockMarketService{}
-	walletMock := &mockWalletService{}
-	settlementMock := &mockSettlementService{}
-	kafkaMock := &mockKafkaProducer{}
+    marketMock := &mockMarketService{}
+    walletMock := &mockWalletService{}
+    settlementMock := &mockSettlementService{}
+    kafkaMock := &mockKafkaProducer{}
 
-	gateway := &APIGateway{
-		logger:         logger,
-		metrics:        metricsRegistry,
-		marketStub:     marketMock,
-		walletStub:     walletMock,
-		settlementStub: settlementMock,
-		kafkaProducer:  kafkaMock,
-	}
+    gateway := &APIGateway{
+        logger:         logger,
+        marketStub:     marketMock,
+        walletStub:     walletMock,
+        settlementStub: settlementMock,
+        kafkaProducer:  kafkaMock,
+    }
 
 	return gateway, marketMock, walletMock, settlementMock, kafkaMock
 }

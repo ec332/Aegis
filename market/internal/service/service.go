@@ -1,16 +1,15 @@
 package service
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"time"
+    "context"
+    "fmt"
+    "time"
 
-	"github.com/ec332/aegis/market/internal/repository"
-	"github.com/ec332/aegis/market/pkg/models"
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
+    "github.com/ec332/aegis/market/internal/repository"
+    "github.com/ec332/aegis/market/pkg/models"
+    "github.com/google/uuid"
+    "github.com/redis/go-redis/v9"
+    "go.uber.org/zap"
 )
 
 // Service handles business logic for markets
@@ -86,13 +85,7 @@ func (s *Service) CreateMarket(ctx context.Context, req models.CreateMarketReque
 	market.Options = options
 	market.LiquidityPools = pools
 
-	// Publish market creation event to Redis
-	if err := s.publishLiquidityUpdate(ctx, marketID, pools); err != nil {
-		s.logger.Warn("failed to publish market creation",
-			zap.Error(err))
-	}
-
-	return market, nil
+    return market, nil
 }
 
 // GetMarket retrieves a market by ID
@@ -106,13 +99,12 @@ func (s *Service) GetMarket(ctx context.Context, marketID string) (*models.Marke
 }
 
 // ListMarkets retrieves markets
-func (s *Service) ListMarkets(ctx context.Context, status *models.MarketStatus) ([]models.Market, error) {
-	markets, err := s.repo.ListMarkets(ctx, status)
-	if err != nil {
-		return nil, err
-	}
-
-	return markets, nil
+func (s *Service) ListMarkets(ctx context.Context, status *models.MarketStatus, limit, offset int32) ([]models.Market, int32, error) {
+    markets, total, err := s.repo.ListMarkets(ctx, status, limit, offset)
+    if err != nil {
+        return nil, 0, err
+    }
+    return markets, total, nil
 }
 
 // UpdateMarket updates a market's details
@@ -139,84 +131,21 @@ func (s *Service) UpdateMarket(ctx context.Context, marketID string, req models.
 		return nil, err
 	}
 
-	// Publish update to Redis
-	if err := s.publishLiquidityUpdate(ctx, marketID, market.LiquidityPools); err != nil {
-		s.logger.Warn("failed to publish market update",
-			zap.Error(err))
-	}
-
-	return market, nil
+    return market, nil
 }
 
 // UpdateLiquidityPool updates a liquidity pool and publishes to Redis
 func (s *Service) UpdateLiquidityPool(ctx context.Context, marketID, poolID string, poolValue float64) error {
-	if err := s.repo.UpdateLiquidityPool(ctx, poolID, poolValue); err != nil {
-		return err
-	}
-
-	// Fetch updated pools
-	pools, err := s.repo.GetLiquidityPoolsByMarketID(ctx, marketID)
-	if err != nil {
-		return err
-	}
-
-	// Publish to Redis
-	if err := s.publishLiquidityUpdate(ctx, marketID, pools); err != nil {
-		s.logger.Warn("failed to publish liquidity update",
-			zap.Error(err))
-	}
-
-	return nil
+    if err := s.repo.UpdateLiquidityPool(ctx, poolID, poolValue); err != nil {
+        return err
+    }
+    return nil
 }
 
 // SubscribeToLiquidityUpdates subscribes to liquidity pool updates for a market from Redis
-func (s *Service) SubscribeToLiquidityUpdates(ctx context.Context, marketID string) (<-chan models.LiquidityUpdate, error) {
-	pubsub := s.redisClient.Subscribe(ctx, fmt.Sprintf("market:%s:liquidity", marketID))
+// removed SubscribeToLiquidityUpdates
 
-	ch := make(chan models.LiquidityUpdate)
-
-	go func() {
-		defer close(ch)
-		defer pubsub.Close()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg := <-pubsub.Channel():
-				var update models.LiquidityUpdate
-				if err := json.Unmarshal([]byte(msg.Payload), &update); err != nil {
-					s.logger.Error("failed to unmarshal liquidity update",
-						zap.Error(err))
-					continue
-				}
-				ch <- update
-			}
-		}
-	}()
-
-	return ch, nil
-}
-
-func (s *Service) publishLiquidityUpdate(ctx context.Context, marketID string, pools []models.LiquidityPool) error {
-	update := models.LiquidityUpdate{
-		MarketID:       marketID,
-		LiquidityPools: pools,
-		Timestamp:      time.Now(),
-	}
-
-	data, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("marshal liquidity update: %w", err)
-	}
-
-	channel := fmt.Sprintf("market:%s:liquidity", marketID)
-	if err := s.redisClient.Publish(ctx, channel, data).Err(); err != nil {
-		return fmt.Errorf("publish to redis: %w", err)
-	}
-
-	return nil
-}
+// removed publishLiquidityUpdate
 
 // GetMarketPrices calculates the current prices for all options in a market
 func (s *Service) GetMarketPrices(ctx context.Context, marketID string) (map[string]float64, error) {
@@ -356,4 +285,3 @@ func (s *Service) validateStatusTransition(from, to models.MarketStatus) error {
 
 	return fmt.Errorf("cannot transition from %s to %s", from, to)
 }
-

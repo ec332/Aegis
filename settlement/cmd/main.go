@@ -17,7 +17,6 @@ import (
     "google.golang.org/protobuf/types/known/timestamppb"
 
     grpcserver "github.com/aegis/shared/grpc"
-    "github.com/aegis/shared/metrics"
     settlement "github.com/aegis/proto/gen/settlement"
     wallet "github.com/aegis/proto/gen/wallet"
 )
@@ -172,9 +171,8 @@ func main() {
     defer walletConn.Close()
     walletClient := wallet.NewWalletServiceClient(walletConn)
 
-    metricsRegistry := metrics.NewRegistry(logger)
     grpcServer := grpc.NewServer(
-        grpc.UnaryInterceptor(grpcserver.UnaryServerInterceptor(logger, grpcserver.NewServerMetrics("settlement", metricsRegistry))),
+        grpc.UnaryInterceptor(grpcserver.UnaryServerInterceptor(logger, nil)),
     )
     settlementServer := NewSettlementGRPCServer(logger, walletClient)
     settlement.RegisterSettlementServiceServer(grpcServer, settlementServer)
