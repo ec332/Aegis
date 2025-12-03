@@ -22,6 +22,31 @@ jobs:
       - name: Go Test
         run: go test ./...
 
+  go-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+      - name: Run coverage
+        run: |
+          go test -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tee coverage.txt
+          total=$(go tool cover -func=coverage.out | grep total: | awk '{print $3}' | sed 's/%//')
+          thresh=70
+          awk -v t=$thresh -v v=$total 'BEGIN { if (v+0 < t+0) { printf("Coverage %.2f%% < threshold %d%%\n", v, t); exit 1 } else { printf("Coverage %.2f%% >= threshold %d%%\n", v, t); } }'
+      - name: Upload Go coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: |
+            coverage.out
+            coverage.txt
+
   docker-build:
     runs-on: ubuntu-latest
     needs: build-test
@@ -137,4 +162,32 @@ jobs:
         run: npm run build
       - name: Run Playwright tests
         working-directory: aegis-fe
-        run: npm run test:e2e
+        run: npx playwright test --reporter=html
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: aegis-fe/playwright-report
+
+  fe-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install frontend deps
+        working-directory: aegis-fe
+        run: npm ci
+      - name: Run Vitest coverage with thresholds
+        working-directory: aegis-fe
+        run: npm run test:coverage
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: fe-coverage
+          path: |
+            aegis-fe/coverage
