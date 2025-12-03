@@ -7,7 +7,9 @@ import MarketForm from "@/components/MarketForm";
 import { useAppStore } from "@/store/appStore";
 import { Market, Option } from "@/types";
 import { DEFAULT_USER_ID } from "@/constants";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import LoadingSkeleton from "@/components/LoadingSkeleton";
+import ErrorBanner from "@/components/ErrorBanner";
 import { useAuthStore } from "@/store/authStore";
 
 export default function Home() {
@@ -20,6 +22,8 @@ export default function Home() {
   } | null>(null);
   const [activeTab, setActiveTab] = useState<"markets" | "wallet">("markets");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const formDialogRef = useRef<HTMLDivElement | null>(null);
+  const formFirstRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     // No-op: app initialization is handled globally by AppInitializer
@@ -53,24 +57,41 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    const el = formDialogRef.current;
+    if (!isFormOpen || !el) return;
+    const focusables = el.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    first?.focus();
+    const keyHandler = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        setIsFormOpen(false);
+      } else if (ev.key === "Tab") {
+        if (focusables.length === 0) return;
+        const active = document.activeElement as HTMLElement;
+        if (ev.shiftKey) {
+          if (active === first) {
+            ev.preventDefault();
+            last?.focus();
+          }
+        } else {
+          if (active === last) {
+            ev.preventDefault();
+            first?.focus();
+          }
+        }
+      }
+    };
+    el.addEventListener("keydown", keyHandler);
+    return () => el.removeEventListener("keydown", keyHandler);
+  }, [isFormOpen]);
+
   return (
     <main className="bg-white min-h-screen">
       <div className="px-4 sm:px-6 lg:px-8 py-20 max-w-7xl mx-auto">
         {!isBackendHealthy && (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <span className="text-yellow-800">
-                Backend connection issues detected. Some features may be limited.
-              </span>
-            </div>
-          </div>
+          <ErrorBanner message="Backend connection issues detected. Some features may be limited." />
         )}
 
         <div className="mb-6" />
@@ -101,8 +122,8 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
-                <p className="text-gray-600 text-lg">Loading markets...</p>
+              <div className="py-12">
+                <LoadingSkeleton lines={6} />
               </div>
             )}
           </div>
@@ -124,8 +145,8 @@ export default function Home() {
         )}
 
         {isFormOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-2 sm:px-4">
-            <div className="relative w-full max-w-[640px] sm:max-w-lg rounded-2xl bg-white p-4 sm:p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-2 sm:px-4" role="dialog" aria-modal="true" aria-labelledby="create-market-title" ref={formDialogRef} onMouseDown={(e) => { if (e.target === e.currentTarget) setIsFormOpen(false); }}>
+            <div className="relative w-full max-w-[640px] sm:max-w-lg rounded-2xl bg-white p-4 sm:p-6 shadow-2xl max-h-[85vh] overflow-y-auto" onMouseDown={(e) => e.stopPropagation()}>
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-xl font-semibold text-[#151b4d]">Create Market</h3>
                 <button

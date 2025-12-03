@@ -59,22 +59,25 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4" aria-labelledby="create-market-title">
+      <h3 id="create-market-title" className="sr-only">Create Market</h3>
+      <label className="flex flex-col gap-1" htmlFor="question">
         <span>Question</span>
         <input
+          id="question"
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           required
           className="rounded border px-3 py-2"
           placeholder=""
-        />
+          />
       </label>
 
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" htmlFor="description">
         <span>Description</span>
         <textarea
+          id="description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           required
@@ -84,9 +87,10 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
         />
       </label>
 
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" htmlFor="option1">
         <span>Option 1</span>
         <input
+          id="option1"
           type="text"
           value={option1}
           onChange={(e) => setOption1(e.target.value)}
@@ -95,9 +99,10 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
         />
       </label>
 
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" htmlFor="option2">
         <span>Option 2</span>
         <input
+          id="option2"
           type="text"
           value={option2}
           onChange={(e) => setOption2(e.target.value)}
@@ -106,9 +111,10 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
         />
       </label>
 
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" htmlFor="resolution">
         <span>Resolution datetime</span>
         <input
+          id="resolution"
           type="datetime-local"
           value={resolutionDatetime}
           onChange={(e) => setResolutionDatetime(e.target.value)}
@@ -121,12 +127,14 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
         type="submit"
         className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-60"
         disabled={status === "submitting"}
+        aria-busy={status === "submitting"}
+        aria-label="Create market"
       >
         {status === "submitting" ? "Creating..." : "Create market"}
       </button>
 
       {status === "success" && <p className="text-green-600">Market created.</p>}
-      {status === "error" && <p className="text-red-600">Failed: {error}</p>}
+      {status === "error" && <p className="text-red-600" role="alert">Failed: {error}</p>}
     </form>
   );
 }

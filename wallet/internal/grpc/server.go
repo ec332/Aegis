@@ -271,7 +271,7 @@ func (s *Server) Deposit(ctx context.Context, req *wallet.DepositRequest) (*wall
         Type:        tx.Type,
         Amount:      tx.Amount,
         Status:      tx.Status,
-        ReferenceId: tx.Description,
+        ReferenceId: tx.ReferenceID,
         CreatedAt:   timestamppb.New(tx.CreatedAt),
         UpdatedAt:   timestamppb.New(tx.UpdatedAt),
     }}, nil
@@ -295,7 +295,7 @@ func (s *Server) Withdrawal(ctx context.Context, req *wallet.WithdrawalRequest) 
         Type:        tx.Type,
         Amount:      req.Amount,
         Status:      tx.Status,
-        ReferenceId: tx.Description,
+        ReferenceId: tx.ReferenceID,
         CreatedAt:   timestamppb.New(tx.CreatedAt),
         UpdatedAt:   timestamppb.New(tx.UpdatedAt),
     }}, nil
@@ -320,7 +320,7 @@ func (s *Server) GetWalletTransactions(ctx context.Context, req *wallet.GetWalle
             Type:        t.Type,
             Amount:      t.Amount,
             Status:      t.Status,
-            ReferenceId: t.Description,
+            ReferenceId: t.ReferenceID,
             CreatedAt:   timestamppb.New(t.CreatedAt),
             UpdatedAt:   timestamppb.New(t.UpdatedAt),
         })
