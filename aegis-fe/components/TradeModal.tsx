@@ -38,11 +38,7 @@ export default function TradeModal({
   const [shares, setShares] = useState<string>(
     initialTransaction?.number_of_shares?.toString() || ""
   );
-  const [pricePerShare, setPricePerShare] = useState<string>(
-    initialTransaction?.price_per_share?.toString() ||
-      initialTransaction?.price?.toString() ||
-      ""
-  );
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -74,17 +70,11 @@ export default function TradeModal({
           initialTransaction.price?.toString() ||
           ""
       );
-      setPricePerShare(
-        initialTransaction.price_per_share?.toString() ||
-          initialTransaction.price?.toString() ||
-          ""
-      );
       setTransactionType(
         initialTransaction.transaction_type === "SELL" ? "SELL" : "BUY"
       );
     } else {
       setShares("");
-      setPricePerShare("");
       setTransactionType("BUY");
     }
   }, [initialTransaction, options]);
@@ -94,25 +84,11 @@ export default function TradeModal({
     if (!initialTransaction && options.length > 0 && !selectedOption) {
       const defaultOption = options[0];
       setSelectedOption(defaultOption);
-      if (
-        !pricePerShare &&
-        typeof defaultOption.current_price === "number"
-      ) {
-        setPricePerShare(defaultOption.current_price.toString());
-      }
     }
-  }, [initialTransaction, options, pricePerShare, selectedOption]);
+  }, [initialTransaction, options, selectedOption]);
 
   // Keep price-per-share pre-filled with the selected option price if empty
-  useEffect(() => {
-    if (
-      selectedOption &&
-      !pricePerShare &&
-      typeof selectedOption.current_price === "number"
-    ) {
-      setPricePerShare(selectedOption.current_price.toString());
-    }
-  }, [pricePerShare, selectedOption]);
+  // No editable price state; price is derived from selected option
 
   // Load current holdings (shares) for this market
   useEffect(() => {
@@ -153,13 +129,12 @@ export default function TradeModal({
       setErrorMessage("Enter a valid number of shares (minimum 1).");
       return;
     }
-    const parsedPricePerShare = parseFloat(pricePerShare);
-    if (
-      !pricePerShare ||
-      Number.isNaN(parsedPricePerShare) ||
-      parsedPricePerShare <= 0
-    ) {
-      setErrorMessage("Enter a valid price per share greater than 0.");
+    const parsedPricePerShare =
+      typeof selectedOption.current_price === "number"
+        ? selectedOption.current_price
+        : NaN;
+    if (Number.isNaN(parsedPricePerShare) || parsedPricePerShare <= 0) {
+      setErrorMessage("Price unavailable for selected option.");
       return;
     }
 
@@ -204,9 +179,6 @@ export default function TradeModal({
 
   const handleSelectOption = (opt: Option) => {
     setSelectedOption(opt);
-    if (typeof opt.current_price === "number") {
-      setPricePerShare(opt.current_price.toString());
-    }
   };
 
   const marketTitle = market.question || (market as any).title || "Untitled Market";
@@ -337,31 +309,7 @@ export default function TradeModal({
             />
           </div>
 
-          {/* Price per share */}
-          <div className="mb-6">
-            <label
-              htmlFor="pricePerShare"
-              className="block text-sm font-semibold text-gray-700 mb-2"
-            >
-              Price per share
-            </label>
-            <input
-              id="pricePerShare"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              inputMode="decimal"
-              value={pricePerShare}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (/^\d*(\.\d{0,4})?$/.test(v)) {
-                  setPricePerShare(v);
-                }
-              }}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-[#151b4d] focus:ring-2 focus:ring-[#151b4d] focus:ring-opacity-10"
-            />
-          </div>
+          
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
