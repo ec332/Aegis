@@ -781,18 +781,23 @@ func (g *APIGateway) handleTransactionRequest(w http.ResponseWriter, r *http.Req
 }
 
 func (g *APIGateway) createTransaction(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		UserID          string  `json:"user_id"`
-		MarketID        string  `json:"market_id"`
-		OptionID        string  `json:"option_id"`
-		TransactionType string  `json:"transaction_type"`
-		NumberOfShares  int32   `json:"number_of_shares"`
-		PricePerShare   float64 `json:"price_per_share"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+    authz := strings.TrimSpace(r.Header.Get("Authorization"))
+    if authz == "" {
+        http.Error(w, "authorization required", http.StatusUnauthorized)
+        return
+    }
+    var body struct {
+        UserID          string  `json:"user_id"`
+        MarketID        string  `json:"market_id"`
+        OptionID        string  `json:"option_id"`
+        TransactionType string  `json:"transaction_type"`
+        NumberOfShares  int32   `json:"number_of_shares"`
+        PricePerShare   float64 `json:"price_per_share"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
 
 	// Convert transaction type string to enum
 	var txType transaction.TransactionType
@@ -806,22 +811,44 @@ func (g *APIGateway) createTransaction(ctx context.Context, w http.ResponseWrite
 		return
 	}
 
-	req := &transaction.TransactionRequest{
-		UserId:          body.UserID,
-		MarketId:        body.MarketID,
-		OptionId:        body.OptionID,
-		TransactionType: txType,
-		NumberOfShares:  body.NumberOfShares,
-		PricePerShare:   body.PricePerShare,
-	}
+    // Pre-check funds for BUY transactions
+    amount := body.PricePerShare * float64(body.NumberOfShares)
+    if txType == transaction.TransactionType_BUY {
+        defCur := strings.TrimSpace(getEnv("WALLET_DEFAULT_CURRENCY", "USD"))
+        ctx = g.withAuth(ctx, r)
+        accResp, err := g.walletStub.GetWalletAccountByUserID(ctx, &wallet.GetWalletAccountByUserIDRequest{UserId: body.UserID, Currency: defCur})
+        if err != nil {
+            st, ok := status.FromError(err)
+            if ok && st.Code() == codes.NotFound {
+                http.Error(w, "wallet account not found", http.StatusBadRequest)
+                return
+            }
+            g.handleGRPCError(ctx, w, err, "wallet", "GetWalletAccountByUserID")
+            return
+        }
+        bal := accResp.Account.AvailableBalance
+        if amount > bal {
+            http.Error(w, "insufficient balance", http.StatusBadRequest)
+            return
+        }
+    }
 
-	resp, err := g.transactionStub.CreateTransaction(ctx, req)
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "transaction", "CreateTransaction")
-		return
-	}
+    req := &transaction.TransactionRequest{
+        UserId:          body.UserID,
+        MarketId:        body.MarketID,
+        OptionId:        body.OptionID,
+        TransactionType: txType,
+        NumberOfShares:  body.NumberOfShares,
+        PricePerShare:   body.PricePerShare,
+    }
+    ctx = g.withAuth(ctx, r)
+    resp, err := g.transactionStub.CreateTransaction(ctx, req)
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "transaction", "CreateTransaction")
+        return
+    }
 
-	g.writeJSONResponse(w, http.StatusCreated, resp)
+    g.writeJSONResponse(w, http.StatusCreated, resp)
 }
 
 func (g *APIGateway) getTransactions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
