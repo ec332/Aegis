@@ -13,7 +13,6 @@ import (
 
     market "github.com/aegis/proto/gen/market"
     grpcserver "github.com/aegis/shared/grpc"
-    "github.com/aegis/shared/metrics"
     "github.com/aegis/shared/utils"
     marketgrpc "github.com/ec332/aegis/market/internal/grpc"
     "github.com/ec332/aegis/market/internal/repository"
@@ -82,14 +81,11 @@ func main() {
 	svc := service.New(repo, redisClient, logger)
 	logger.Info("Service initialized")
 
-	// Create metrics registry
-	metricsRegistry := metrics.NewRegistry(logger)
-
-	// Create gRPC server
-	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(grpcserver.UnaryServerInterceptor(logger, grpcserver.NewServerMetrics("market", metricsRegistry))),
-		grpc.StreamInterceptor(grpcserver.StreamServerInterceptor(logger, grpcserver.NewServerMetrics("market", metricsRegistry))),
-	)
+    // Create gRPC server
+    grpcServer := grpc.NewServer(
+        grpc.UnaryInterceptor(grpcserver.UnaryServerInterceptor(logger, nil)),
+        grpc.StreamInterceptor(grpcserver.StreamServerInterceptor(logger, nil)),
+    )
 
 	// Register market service
 	marketServer := marketgrpc.NewServer(svc, logger)

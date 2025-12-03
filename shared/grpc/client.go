@@ -1,14 +1,13 @@
 package grpc
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"time"
+    "context"
+    "errors"
+    "fmt"
+    "time"
 
 	"github.com/aegis/shared/circuitbreaker"
 	"github.com/aegis/shared/kafka"
-	"github.com/aegis/shared/metrics"
 	"github.com/aegis/shared/retry"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -49,15 +48,14 @@ func DefaultClientConfig(serviceName, target string) ClientConfig {
 }
 
 type ResilientClient struct {
-	config         ClientConfig
-	conn           *grpc.ClientConn
-	circuitBreaker *circuitbreaker.CircuitBreaker
-	kafkaProducer  *kafka.Producer
-	metrics        *metrics.ServiceMetrics
-	logger         *zap.Logger
+    config         ClientConfig
+    conn           *grpc.ClientConn
+    circuitBreaker *circuitbreaker.CircuitBreaker
+    kafkaProducer  *kafka.Producer
+    logger         *zap.Logger
 }
 
-func NewResilientClient(config ClientConfig, logger *zap.Logger, metricsRegistry *metrics.Registry) (*ResilientClient, error) {
+func NewResilientClient(config ClientConfig, logger *zap.Logger) (*ResilientClient, error) {
 	// Create gRPC connection
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -76,17 +74,13 @@ func NewResilientClient(config ClientConfig, logger *zap.Logger, metricsRegistry
 		kafkaProducer = kafka.NewProducer(config.KafkaConfig, logger)
 	}
 
-	// Create service metrics
-	serviceMetrics := metrics.NewServiceMetrics(config.ServiceName, metricsRegistry)
-
-	return &ResilientClient{
-		config:         config,
-		conn:           conn,
-		circuitBreaker: cb,
-		kafkaProducer:  kafkaProducer,
-		metrics:        serviceMetrics,
-		logger:         logger,
-	}, nil
+    return &ResilientClient{
+        config:         config,
+        conn:           conn,
+        circuitBreaker: cb,
+        kafkaProducer:  kafkaProducer,
+        logger:         logger,
+    }, nil
 }
 
 func (c *ResilientClient) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
@@ -118,10 +112,7 @@ func (c *ResilientClient) invokeWithTimeout(ctx context.Context, method string, 
 	ctx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
 
-	// Record metrics
-	err := c.metrics.RecordRequest(method, func() error {
-		return c.conn.Invoke(ctx, method, args, reply, opts...)
-	})
+    err := c.conn.Invoke(ctx, method, args, reply, opts...)
 
 	if err != nil {
 		// Check if this is a timeout or circuit breaker should trigger
@@ -194,7 +185,6 @@ func (c *ResilientClient) fallbackToKafka(method string, args interface{}) error
 		zap.String("method", method),
 		zap.String("topic", topic))
 
-	c.metrics.RecordCircuitBreakerOperation("kafka_fallback")
 	
 	// Return a specific error indicating fallback was used
 	return ErrKafkaFallback
@@ -244,9 +234,7 @@ func (c *ResilientClient) GetCircuitBreaker() *circuitbreaker.CircuitBreaker {
 	return c.circuitBreaker
 }
 
-func (c *ResilientClient) GetMetrics() *metrics.ServiceMetrics {
-	return c.metrics
-}
+// Metrics removed
 
 type KafkaMessage struct {
 	Service   string      `json:"service"`

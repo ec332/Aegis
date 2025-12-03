@@ -404,6 +404,17 @@ export async function fetchUserTransactions(userId: string): Promise<Transaction
   }
 }
 
+export async function fetchUserTransactionsForMarket(userId: string, marketId: string, page = 1, pageSize = 200): Promise<Transaction[]> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/transactions?user_id=${encodeURIComponent(userId)}&market_id=${encodeURIComponent(marketId)}&page=${page}&page_size=${pageSize}`);
+    const data = await handleResponse<{ transactions: Transaction[]; total?: number }>(response);
+    return data.transactions || [];
+  } catch (error) {
+    console.error(`Error fetching transactions for user ${userId} and market ${marketId}:`, error);
+    throw error;
+  }
+}
+
 export async function createTransaction(
   transaction: CreateTransactionInput
 ): Promise<Transaction> {

@@ -33,10 +33,13 @@ message TransactionResponse {
 message GetTransactionsRequest {
   optional string user_id = 1;
   optional string market_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
 }
 
 message GetTransactionsResponse {
   repeated Transaction transactions = 1;
+  int32 total = 2;
 }
 
 message Transaction {

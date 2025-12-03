@@ -1,41 +1,23 @@
 package grpc
 
 import (
-	"context"
-	"time"
+    "context"
+    "time"
 
-	"github.com/aegis/shared/metrics"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+    "go.uber.org/zap"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
 )
 
 // ServerMetrics provides metrics for gRPC servers
-type ServerMetrics struct {
-	registry         *metrics.Registry
-	requestCounter   *metrics.Counter
-	errorCounter     *metrics.Counter
-	requestTimer     *metrics.Timer
-}
-
-func NewServerMetrics(serviceName string, registry *metrics.Registry) *ServerMetrics {
-	return &ServerMetrics{
-		registry:       registry,
-		requestCounter: registry.Counter(serviceName + "_server_requests_total"),
-		errorCounter:   registry.Counter(serviceName + "_server_errors_total"),
-		requestTimer:   registry.Timer(serviceName + "_server_request_duration"),
-	}
-}
+type ServerMetrics struct{}
 
 // UnaryServerInterceptor provides metrics and logging for unary gRPC calls
-func UnaryServerInterceptor(logger *zap.Logger, metrics *ServerMetrics) grpc.UnaryServerInterceptor {
+func UnaryServerInterceptor(logger *zap.Logger, _ *ServerMetrics) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
-		
-		// Record request
-		metrics.requestCounter.Inc()
-		
+        
 		// Log request
 		logger.Debug("gRPC request received",
 			zap.String("method", info.FullMethod),
@@ -45,15 +27,12 @@ func UnaryServerInterceptor(logger *zap.Logger, metrics *ServerMetrics) grpc.Una
 	var resp interface{}
 	var err error
 	
-	_ = metrics.requestTimer.TimeFunc(func() error {
-		resp, err = handler(ctx, req)
-		return err
-	})
+        resp, err = handler(ctx, req)
 		
 		duration := time.Since(start)
 		
 		if err != nil {
-			metrics.errorCounter.Inc()
+            
 			st, _ := status.FromError(err)
 			code := st.Code()
 			switch code {
@@ -83,13 +62,10 @@ func UnaryServerInterceptor(logger *zap.Logger, metrics *ServerMetrics) grpc.Una
 }
 
 // StreamServerInterceptor provides metrics and logging for streaming gRPC calls
-func StreamServerInterceptor(logger *zap.Logger, metrics *ServerMetrics) grpc.StreamServerInterceptor {
+func StreamServerInterceptor(logger *zap.Logger, _ *ServerMetrics) grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
-		
-		// Record request
-		metrics.requestCounter.Inc()
-		
+        
 		// Log request
 		logger.Debug("gRPC stream request received",
 			zap.String("method", info.FullMethod))
@@ -98,9 +74,8 @@ func StreamServerInterceptor(logger *zap.Logger, metrics *ServerMetrics) grpc.St
 		err := handler(srv, ss)
 		
 		duration := time.Since(start)
-		
-		if err != nil {
-			metrics.errorCounter.Inc()
+        
+        if err != nil {
 			st, _ := status.FromError(err)
 			code := st.Code()
 			switch code {

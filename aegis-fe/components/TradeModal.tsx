@@ -10,6 +10,8 @@ import {
   TransactionType,
 } from "@/types";
 import { useState, useEffect } from "react";
+import { useAppStore } from "@/store/appStore";
+import { fetchUserTransactionsForMarket } from "@/services/api";
 import type { FormEvent } from "react";
 
 interface TradeModalProps {
@@ -44,6 +46,16 @@ export default function TradeModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [holdings, setHoldings] = useState<Record<string, number>>({});
+  const isSellType = (t: any) => {
+    if (typeof t === "string") {
+      return t.toUpperCase() === "SELL" || t === "1";
+    }
+    if (typeof t === "number") {
+      return t === 1;
+    }
+    return false;
+  };
 
   const profile = useAuthStore((state) => state.profile);
   const resolvedUserId = userId || profile?.id || DEFAULT_USER_ID;
@@ -102,6 +114,28 @@ export default function TradeModal({
     }
   }, [pricePerShare, selectedOption]);
 
+  // Load current holdings (shares) for this market
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHoldings() {
+      try {
+        if (!resolvedUserId) return;
+        const txs = await fetchUserTransactionsForMarket(resolvedUserId, market.id);
+        const byOption: Record<string, number> = {};
+        for (const tx of txs) {
+          const shares = tx.number_of_shares || 0;
+          const sign = isSellType(tx.transaction_type) ? -1 : 1;
+          byOption[tx.option_id] = (byOption[tx.option_id] || 0) + sign * shares;
+        }
+        if (!cancelled) setHoldings(byOption);
+      } catch {
+        // ignore
+      }
+    }
+    loadHoldings();
+    return () => { cancelled = true; };
+  }, [resolvedUserId, market.id]);
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -139,6 +173,25 @@ export default function TradeModal({
         number_of_shares: shareCount,
         price_per_share: parsedPricePerShare,
       });
+      // Refresh options for this market so UI reflects updated prices
+      try {
+        await useAppStore.getState().loadOptionsForMarket(market.id);
+      } catch {}
+      // Refresh current user's wallet to reflect updated balance
+      try {
+        await useAppStore.getState().loadCurrentUserWallet(resolvedUserId);
+      } catch {}
+      // Refresh holdings after a successful trade
+      try {
+        const txs = await fetchUserTransactionsForMarket(resolvedUserId, market.id);
+        const byOption: Record<string, number> = {};
+        for (const tx of txs) {
+          const shares = tx.number_of_shares || 0;
+          const sign = isSellType(tx.transaction_type) ? -1 : 1;
+          byOption[tx.option_id] = (byOption[tx.option_id] || 0) + sign * shares;
+        }
+        setHoldings(byOption);
+      } catch {}
       setSuccessMessage("Trade submitted successfully.");
       onClose();
     } catch (err) {
@@ -146,6 +199,13 @@ export default function TradeModal({
       setErrorMessage(fallback || "Failed to submit trade. Please try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSelectOption = (opt: Option) => {
+    setSelectedOption(opt);
+    if (typeof opt.current_price === "number") {
+      setPricePerShare(opt.current_price.toString());
     }
   };
 
@@ -203,7 +263,7 @@ export default function TradeModal({
                 <button
                   key={option.id}
                   type="button"
-                  onClick={() => setSelectedOption(option)}
+                  onClick={() => handleSelectOption(option)}
                   className={`w-full px-4 py-3 rounded-md border-2 transition-colors font-medium text-left ${
                     selectedOption?.id === option.id
                       ? index % 2 === 0
@@ -219,6 +279,9 @@ export default function TradeModal({
                         Price: ${option.current_price.toFixed(2)}
                       </span>
                     )}
+                    <span className="text-xs text-white/80">
+                      You own: {(holdings[option.id] || 0).toFixed(0)} shares
+                    </span>
                   </div>
                 </button>
               ))}

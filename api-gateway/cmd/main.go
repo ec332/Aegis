@@ -1,33 +1,34 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"strings"
-	"time"
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "strings"
+    "time"
     "strconv"
 
-	"github.com/go-chi/cors"
-	jwt "github.com/golang-jwt/jwt/v5"
-	"github.com/gorilla/mux"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
+    "github.com/go-chi/cors"
+    jwt "github.com/golang-jwt/jwt/v5"
+    "github.com/gorilla/mux"
+    "golang.org/x/sync/singleflight"
+    "go.uber.org/zap"
+    "google.golang.org/grpc/metadata"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
-	market "github.com/aegis/proto/gen/market"
-	settlement "github.com/aegis/proto/gen/settlement"
-	transaction "github.com/aegis/proto/gen/transaction"
-	wallet "github.com/aegis/proto/gen/wallet"
-	resgrpc "github.com/aegis/shared/grpc"
-	"github.com/aegis/shared/kafka"
-	"github.com/aegis/shared/metrics"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    market "github.com/aegis/proto/gen/market"
+    settlement "github.com/aegis/proto/gen/settlement"
+    transaction "github.com/aegis/proto/gen/transaction"
+    wallet "github.com/aegis/proto/gen/wallet"
+    resgrpc "github.com/aegis/shared/grpc"
+    "github.com/aegis/shared/kafka"
+    "google.golang.org/protobuf/types/known/timestamppb"
+    "github.com/redis/go-redis/v9"
 )
 
 type KafkaPublisher interface {
@@ -35,20 +36,21 @@ type KafkaPublisher interface {
 }
 
 type APIGateway struct {
-	logger            *zap.Logger
-	metrics           *metrics.Registry
-	marketClient      *resgrpc.ResilientClient
-	walletClient      *resgrpc.ResilientClient
-	settlementClient  *resgrpc.ResilientClient
-	transactionClient *resgrpc.ResilientClient
-	kafkaProducer     KafkaPublisher
-	marketStub        market.MarketServiceClient
-	walletStub        wallet.WalletServiceClient
-	settlementStub    settlement.SettlementServiceClient
-	transactionStub   transaction.TransactionServiceClient
+    logger            *zap.Logger
+    marketClient      *resgrpc.ResilientClient
+    walletClient      *resgrpc.ResilientClient
+    settlementClient  *resgrpc.ResilientClient
+    transactionClient *resgrpc.ResilientClient
+    kafkaProducer     KafkaPublisher
+    marketStub        market.MarketServiceClient
+    walletStub        wallet.WalletServiceClient
+    settlementStub    settlement.SettlementServiceClient
+    transactionStub   transaction.TransactionServiceClient
+    redis             *redis.Client
+    sfGroup           singleflight.Group
 }
 
-func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIGateway, error) {
+func NewAPIGateway(logger *zap.Logger) (*APIGateway, error) {
 	marketAddr := getEnv("MARKET_SERVICE_GRPC_ADDR", "market-service:50051")
 	walletAddr := getEnv("WALLET_SERVICE_GRPC_ADDR", "wallet-service:50052")
 	settlementAddr := getEnv("SETTLEMENT_SERVICE_GRPC_ADDR", "settlement-service:50053")
@@ -59,22 +61,22 @@ func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIG
 	settlementConfig := resgrpc.DefaultClientConfig("settlement", settlementAddr)
 	transactionConfig := resgrpc.DefaultClientConfig("transaction", transactionAddr)
 
-	marketClient, err := resgrpc.NewResilientClient(marketConfig, logger, metricsRegistry)
+    marketClient, err := resgrpc.NewResilientClient(marketConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create market client: %w", err)
 	}
 
-	walletClient, err := resgrpc.NewResilientClient(walletConfig, logger, metricsRegistry)
+    walletClient, err := resgrpc.NewResilientClient(walletConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create wallet client: %w", err)
 	}
 
-	settlementClient, err := resgrpc.NewResilientClient(settlementConfig, logger, metricsRegistry)
+    settlementClient, err := resgrpc.NewResilientClient(settlementConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create settlement client: %w", err)
 	}
 
-	transactionClient, err := resgrpc.NewResilientClient(transactionConfig, logger, metricsRegistry)
+    transactionClient, err := resgrpc.NewResilientClient(transactionConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction client: %w", err)
 	}
@@ -87,21 +89,32 @@ func NewAPIGateway(logger *zap.Logger, metricsRegistry *metrics.Registry) (*APIG
 			brokers = append(brokers, b)
 		}
 	}
-	kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: brokers}, logger)
+    kafkaProducer := kafka.NewProducer(kafka.Config{Brokers: brokers}, logger)
 
-	return &APIGateway{
-		logger:            logger,
-		metrics:           metricsRegistry,
-		marketClient:      marketClient,
-		walletClient:      walletClient,
-		settlementClient:  settlementClient,
-		transactionClient: transactionClient,
-		kafkaProducer:     kafkaProducer,
-		marketStub:        market.NewMarketServiceClient(marketClient.GetConnection()),
-		walletStub:        wallet.NewWalletServiceClient(walletClient.GetConnection()),
-		settlementStub:    settlement.NewSettlementServiceClient(settlementClient.GetConnection()),
-		transactionStub:   transaction.NewTransactionServiceClient(transactionClient.GetConnection()),
-	}, nil
+    // Redis client (for caching)
+    redisURL := getEnv("REDIS_URL", "redis://redis:6379")
+    ropts, rerr := redis.ParseURL(redisURL)
+    if rerr != nil {
+        return nil, fmt.Errorf("failed to parse redis url: %w", rerr)
+    }
+    rcli := redis.NewClient(ropts)
+    if err := rcli.Ping(context.Background()).Err(); err != nil {
+        logger.Warn("Redis ping failed", zap.Error(err))
+    }
+
+    return &APIGateway{
+        logger:            logger,
+        marketClient:      marketClient,
+        walletClient:      walletClient,
+        settlementClient:  settlementClient,
+        transactionClient: transactionClient,
+        kafkaProducer:     kafkaProducer,
+        marketStub:        market.NewMarketServiceClient(marketClient.GetConnection()),
+        walletStub:        wallet.NewWalletServiceClient(walletClient.GetConnection()),
+        settlementStub:    settlement.NewSettlementServiceClient(settlementClient.GetConnection()),
+        transactionStub:   transaction.NewTransactionServiceClient(transactionClient.GetConnection()),
+        redis:             rcli,
+    }, nil
 }
 
 func (g *APIGateway) handleMarketRequest(w http.ResponseWriter, r *http.Request) {
@@ -126,35 +139,127 @@ func (g *APIGateway) handleMarketRequest(w http.ResponseWriter, r *http.Request)
 }
 
 func (g *APIGateway) listMarkets(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	req := &market.ListMarketsRequest{}
+    // Pagination params
+    q := r.URL.Query()
+    page := 1
+    size := 20
+    if v := strings.TrimSpace(q.Get("page")); v != "" { if n, err := strconv.Atoi(v); err == nil && n > 0 { page = n } }
+    if v := strings.TrimSpace(q.Get("page_size")); v != "" { if n, err := strconv.Atoi(v); err == nil && n > 0 { size = n } }
+    if size > 50 { size = 50 }
 
-	resp, err := g.marketStub.ListMarkets(ctx, req)
+    cacheKey := fmt.Sprintf("markets:list:page:%d:%d", page, size)
+    // Attempt cache read
+    if g.redis != nil {
+        var cached struct{ Markets []*market.Market `json:"markets"` }
+        if ok := g.getCacheJSON(ctx, cacheKey, &cached); ok {
+            g.writeJSONResponse(w, http.StatusOK, cached)
+            return
+        }
+        _ = cached
+    }
 
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "market", "ListMarkets")
-		return
-	}
+    // Singleflight to avoid stampede on cache miss
+    v, _, _ := g.sfGroup.Do(cacheKey, func() (interface{}, error) {
+        resp, err := g.marketStub.ListMarkets(ctx, &market.ListMarketsRequest{Limit: int32(size), Offset: int32((page-1)*size)})
+        if err != nil { return nil, err }
+        total := int(resp.Total)
+        pageSlice := resp.Markets
+        // Conditional GET based on newest updated_at in page
+        var newest time.Time
+        for _, m := range pageSlice {
+            if m != nil && m.UpdatedAt != nil {
+                t := m.UpdatedAt.AsTime()
+                if t.After(newest) { newest = t }
+            }
+        }
+        if !newest.IsZero() {
+            lastMod := newest.UTC().Format(http.TimeFormat)
+            etag := fmt.Sprintf("markets-%d-%d-%d", page, size, newest.Unix())
+            w.Header().Set("Last-Modified", lastMod)
+            w.Header().Set("ETag", etag)
+            inm := strings.TrimSpace(r.Header.Get("If-None-Match"))
+            ims := strings.TrimSpace(r.Header.Get("If-Modified-Since"))
+            if inm != "" && inm == etag {
+                w.WriteHeader(http.StatusNotModified)
+                return nil, nil
+            }
+            if ims != "" {
+                if t, err := time.Parse(http.TimeFormat, ims); err == nil {
+                    if !newest.After(t) {
+                        w.WriteHeader(http.StatusNotModified)
+                        return nil, nil
+                    }
+                }
+            }
+        }
+        out := map[string]interface{}{
+            "markets": pageSlice,
+            "page": page,
+            "page_size": size,
+            "total": total,
+            "next_page": func() int { if page*size < total { return page+1 } ; return 0 }(),
+        }
+        if g.redis != nil && page <= 10 {
+            g.setCacheJSON(ctx, cacheKey, out, g.jitterTTL(30*time.Second))
+        }
+        return out, nil
+    })
 
-	g.writeJSONResponse(w, http.StatusOK, resp)
+    if v == nil {
+        g.handleGRPCError(ctx, w, fmt.Errorf("list markets failed"), "market", "ListMarkets")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, v)
 }
 
 func (g *APIGateway) getMarket(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	marketID := extractIDFromPath(r.URL.Path, "markets")
-	if marketID == "" {
-		http.Error(w, "Market ID required", http.StatusBadRequest)
-		return
-	}
-
-	req := &market.GetMarketRequest{Id: marketID}
-
-	resp, err := g.marketStub.GetMarket(ctx, req)
-
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "market", "GetMarket")
-		return
-	}
-
-	g.writeJSONResponse(w, http.StatusOK, resp)
+    marketID := extractIDFromPath(r.URL.Path, "markets")
+    if marketID == "" {
+        http.Error(w, "Market ID required", http.StatusBadRequest)
+        return
+    }
+    cacheKey := fmt.Sprintf("market:%s:summary", marketID)
+    if g.redis != nil {
+        var cached map[string]interface{}
+        if ok := g.getCacheJSON(ctx, cacheKey, &cached); ok {
+            g.writeJSONResponse(w, http.StatusOK, cached)
+            return
+        }
+        _ = cached
+    }
+    v, _, _ := g.sfGroup.Do(cacheKey, func() (interface{}, error) {
+        resp, err := g.marketStub.GetMarket(ctx, &market.GetMarketRequest{Id: marketID})
+        if err != nil { return nil, err }
+        if resp != nil && resp.Market != nil && resp.Market.UpdatedAt != nil {
+            lastMod := resp.Market.UpdatedAt.AsTime().UTC().Format(http.TimeFormat)
+            etag := fmt.Sprintf("%s-%d", resp.Market.Id, resp.Market.UpdatedAt.Seconds)
+            w.Header().Set("Last-Modified", lastMod)
+            w.Header().Set("ETag", etag)
+            if inm := strings.TrimSpace(r.Header.Get("If-None-Match")); inm != "" && inm == etag {
+                w.WriteHeader(http.StatusNotModified)
+                return nil, nil
+            }
+            if ims := strings.TrimSpace(r.Header.Get("If-Modified-Since")); ims != "" {
+                if t, err := time.Parse(http.TimeFormat, ims); err == nil {
+                    if !resp.Market.UpdatedAt.AsTime().After(t) {
+                        w.WriteHeader(http.StatusNotModified)
+                        return nil, nil
+                    }
+                }
+            }
+        }
+        out := map[string]interface{}{"market": resp.Market}
+        if g.redis != nil { g.setCacheJSON(ctx, cacheKey, out, g.jitterTTL(60*time.Second)) }
+        return out, nil
+    })
+    if v == nil {
+        if w.Header().Get("ETag") != "" || w.Header().Get("Last-Modified") != "" {
+            return
+        }
+        g.handleGRPCError(ctx, w, fmt.Errorf("get market failed"), "market", "GetMarket")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, v)
 }
 
 func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -199,38 +304,30 @@ func (g *APIGateway) createMarket(ctx context.Context, w http.ResponseWriter, r 
         return
     }
 
-    var listResp *market.ListMarketsResponse
-    lr, lerr := g.marketStub.ListMarkets(ctx, &market.ListMarketsRequest{})
-    if lerr == nil {
-        listResp = lr
-    } else {
-        g.logger.Warn("ListMarkets after create failed", zap.Error(lerr))
-    }
-
-    var optsResp *market.GetMarketOptionsResponse
-    if resp != nil && resp.Market != nil && strings.TrimSpace(resp.Market.Id) != "" {
-        or, oerr := g.marketStub.GetMarketOptions(ctx, &market.GetMarketOptionsRequest{MarketId: resp.Market.Id})
-        if oerr == nil {
-            optsResp = or
-        } else {
-            g.logger.Warn("GetMarketOptions after create failed", zap.Error(oerr))
-        }
-    }
+    // Removed synchronous fanout to listings/options to reduce load
 
     out := map[string]interface{}{
         "market":  resp.Market,
-        "markets": func() interface{} { if listResp != nil { return listResp.Markets } ; return []interface{}{} }(),
-        "options": func() interface{} { if optsResp != nil { return optsResp.Options } ; return []interface{}{} }(),
+    }
+    if g.redis != nil {
+        // Invalidate listing pages via SCAN
+        cursor := uint64(0)
+        for {
+            keys, cur, _ := g.redis.Scan(ctx, cursor, "markets:list:page:*", 100).Result()
+            if len(keys) > 0 { _, _ = g.redis.Del(ctx, keys...).Result() }
+            cursor = cur
+            if cursor == 0 { break }
+        }
     }
     g.writeJSONResponse(w, http.StatusCreated, out)
 }
 
 func (g *APIGateway) updateMarket(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	marketID := extractIDFromPath(r.URL.Path, "markets")
-	if marketID == "" {
-		http.Error(w, "Market ID required", http.StatusBadRequest)
-		return
-	}
+    marketID := extractIDFromPath(r.URL.Path, "markets")
+    if marketID == "" {
+        http.Error(w, "Market ID required", http.StatusBadRequest)
+        return
+    }
 
 	var req market.UpdateMarketRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -239,33 +336,56 @@ func (g *APIGateway) updateMarket(ctx context.Context, w http.ResponseWriter, r 
 	}
 	req.Id = marketID
 
-	resp, err := g.marketStub.UpdateMarket(ctx, &req)
+    resp, err := g.marketStub.UpdateMarket(ctx, &req)
 
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "market", "UpdateMarket")
-		return
-	}
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "market", "UpdateMarket")
+        return
+    }
 
-	g.writeJSONResponse(w, http.StatusOK, resp)
+    // Invalidate cache entries
+    if g.redis != nil {
+        _ = g.redis.Del(ctx, fmt.Sprintf("market:%s:summary", marketID)).Err()
+        cursor := uint64(0)
+        for {
+            keys, cur, _ := g.redis.Scan(ctx, cursor, "markets:list:page:*", 100).Result()
+            if len(keys) > 0 { _, _ = g.redis.Del(ctx, keys...).Result() }
+            cursor = cur
+            if cursor == 0 { break }
+        }
+        _ = g.redis.Del(ctx, fmt.Sprintf("market:%s:options", marketID)).Err()
+    }
+
+    g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 func (g *APIGateway) getMarketOptions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	marketID := extractIDFromPath(r.URL.Path, "markets")
-	if marketID == "" {
-		http.Error(w, "Market ID required", http.StatusBadRequest)
-		return
-	}
-
-	req := &market.GetMarketOptionsRequest{MarketId: marketID}
-
-	resp, err := g.marketStub.GetMarketOptions(ctx, req)
-
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "market", "GetMarketOptions")
-		return
-	}
-
-	g.writeJSONResponse(w, http.StatusOK, resp)
+    marketID := extractIDFromPath(r.URL.Path, "markets")
+    if marketID == "" {
+        http.Error(w, "Market ID required", http.StatusBadRequest)
+        return
+    }
+    cacheKey := fmt.Sprintf("market:%s:options", marketID)
+    if g.redis != nil {
+        var cached map[string]interface{}
+        if ok := g.getCacheJSON(ctx, cacheKey, &cached); ok {
+            g.writeJSONResponse(w, http.StatusOK, cached)
+            return
+        }
+        _ = cached
+    }
+    v, _, _ := g.sfGroup.Do(cacheKey, func() (interface{}, error) {
+        resp, err := g.marketStub.GetMarketOptions(ctx, &market.GetMarketOptionsRequest{MarketId: marketID})
+        if err != nil { return nil, err }
+        out := map[string]interface{}{"options": resp.Options}
+        if g.redis != nil { g.setCacheJSON(ctx, cacheKey, out, g.jitterTTL(8*time.Second)) }
+        return out, nil
+    })
+    if v == nil {
+        g.handleGRPCError(ctx, w, fmt.Errorf("get market options failed"), "market", "GetMarketOptions")
+        return
+    }
+    g.writeJSONResponse(w, http.StatusOK, v)
 }
 
 func (g *APIGateway) handleWalletRequest(w http.ResponseWriter, r *http.Request) {
@@ -811,6 +931,11 @@ func (g *APIGateway) createTransaction(ctx context.Context, w http.ResponseWrite
 		return
 	}
 
+    // Basic validation
+    if body.NumberOfShares <= 0 || body.PricePerShare < 0 {
+        http.Error(w, "invalid shares or price_per_share", http.StatusBadRequest)
+        return
+    }
     // Pre-check funds for BUY transactions
     amount := body.PricePerShare * float64(body.NumberOfShares)
     if txType == transaction.TransactionType_BUY {
@@ -847,29 +972,66 @@ func (g *APIGateway) createTransaction(ctx context.Context, w http.ResponseWrite
         g.handleGRPCError(ctx, w, err, "transaction", "CreateTransaction")
         return
     }
-
-    g.writeJSONResponse(w, http.StatusCreated, resp)
+    // Invalidate market options cache and fetch updated options for immediate UI refresh
+    if g.redis != nil {
+        _ = g.redis.Del(ctx, fmt.Sprintf("market:%s:options", body.MarketID)).Err()
+    }
+    opts, oerr := g.marketStub.GetMarketOptions(ctx, &market.GetMarketOptionsRequest{MarketId: body.MarketID})
+    if oerr != nil {
+        // If options fetch fails, still return transaction response
+        g.writeJSONResponse(w, http.StatusCreated, resp)
+        return
+    }
+    // Fetch updated wallet account for immediate balance refresh
+    defCur := strings.TrimSpace(getEnv("WALLET_DEFAULT_CURRENCY", "USD"))
+    var acctResp *wallet.GetWalletAccountByUserIDResponse
+    if strings.TrimSpace(body.UserID) != "" {
+        ar, aerr := g.walletStub.GetWalletAccountByUserID(ctx, &wallet.GetWalletAccountByUserIDRequest{UserId: body.UserID, Currency: defCur})
+        if aerr == nil { acctResp = ar }
+    }
+    out := map[string]interface{}{
+        "transaction": resp,
+        "options":     opts.Options,
+    }
+    if acctResp != nil {
+        out["wallet"] = acctResp.Account
+    }
+    g.writeJSONResponse(w, http.StatusCreated, out)
 }
 
 func (g *APIGateway) getTransactions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	marketID := r.URL.Query().Get("market_id")
+    userID := r.URL.Query().Get("user_id")
+    marketID := r.URL.Query().Get("market_id")
+    // Pagination
+    q := r.URL.Query()
+    page := 1
+    size := 20
+    if v := strings.TrimSpace(q.Get("page")); v != "" { if n, err := strconv.Atoi(v); err == nil && n > 0 { page = n } }
+    if v := strings.TrimSpace(q.Get("page_size")); v != "" { if n, err := strconv.Atoi(v); err == nil && n > 0 { size = n } }
+    if size > 50 { size = 50 }
 
-	req := &transaction.GetTransactionsRequest{}
-	if userID != "" {
-		req.UserId = &userID
-	}
-	if marketID != "" {
-		req.MarketId = &marketID
-	}
+    req := &transaction.GetTransactionsRequest{Limit: int32(size), Offset: int32((page-1)*size)}
+    if userID != "" {
+        req.UserId = &userID
+    }
+    if marketID != "" {
+        req.MarketId = &marketID
+    }
 
-	resp, err := g.transactionStub.GetTransactions(ctx, req)
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "transaction", "GetTransactions")
-		return
-	}
-
-	g.writeJSONResponse(w, http.StatusOK, resp)
+    resp, err := g.transactionStub.GetTransactions(ctx, req)
+    if err != nil {
+        g.handleGRPCError(ctx, w, err, "transaction", "GetTransactions")
+        return
+    }
+    total := int(resp.GetTotal())
+    out := map[string]interface{}{
+        "transactions": resp.Transactions,
+        "page": page,
+        "page_size": size,
+        "total": total,
+        "next_page": func() int { if page*size < total { return page+1 } ; return 0 }(),
+    }
+    g.writeJSONResponse(w, http.StatusOK, out)
 }
 
 func extractIDFromPath(path, resource string) string {
@@ -897,13 +1059,34 @@ func (g *APIGateway) withAuth(ctx context.Context, r *http.Request) context.Cont
 	return metadata.NewOutgoingContext(ctx, md)
 }
 
+// Cache helpers
+func (g *APIGateway) getCacheJSON(ctx context.Context, key string, dest interface{}) bool {
+    if g.redis == nil { return false }
+    raw, err := g.redis.Get(ctx, key).Bytes()
+    if err != nil { return false }
+    if err := json.Unmarshal(raw, &dest); err != nil { return false }
+    return true
+}
+
+func (g *APIGateway) setCacheJSON(ctx context.Context, key string, data interface{}, ttl time.Duration) {
+    if g.redis == nil { return }
+    b, err := json.Marshal(data)
+    if err != nil { return }
+    _ = g.redis.Set(ctx, key, b, ttl).Err()
+}
+
+func (g *APIGateway) jitterTTL(ttl time.Duration) time.Duration {
+    n := ttl
+    jitter := time.Duration(int64(n) / 10) // 10%
+    if time.Now().UnixNano()%2 == 0 { return ttl + jitter }
+    return ttl - jitter
+}
+
 func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	metricsRegistry := metrics.NewRegistry(logger)
-
-	gateway, err := NewAPIGateway(logger, metricsRegistry)
+    gateway, err := NewAPIGateway(logger)
 	if err != nil {
 		logger.Fatal("Failed to create API Gateway", zap.Error(err))
 	}

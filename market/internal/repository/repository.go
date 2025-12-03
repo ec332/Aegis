@@ -112,13 +112,13 @@ func (r *Repository) GetMarket(ctx context.Context, marketID string) (*models.Ma
 }
 
 // ListMarkets retrieves markets based on filter criteria
-func (r *Repository) ListMarkets(ctx context.Context, status *models.MarketStatus) ([]models.Market, error) {
-	query := `
-		SELECT id, title, description, status, resolution_datetime,
-		       winning_option_id, liquidity_parameter, created_at, updated_at
-		FROM markets
-		WHERE 1=1
-	`
+func (r *Repository) ListMarkets(ctx context.Context, status *models.MarketStatus, limit, offset int32) ([]models.Market, int32, error) {
+    query := `
+        SELECT id, title, description, status, resolution_datetime,
+               winning_option_id, liquidity_parameter, created_at, updated_at
+        FROM markets
+        WHERE 1=1
+    `
 	args := []interface{}{}
 	argCount := 1
 
@@ -128,11 +128,21 @@ func (r *Repository) ListMarkets(ctx context.Context, status *models.MarketStatu
 		argCount++
 	}
 
-	query += " ORDER BY created_at DESC"
+    query += " ORDER BY created_at DESC"
+    if limit > 0 {
+        query += " LIMIT $" + fmt.Sprintf("%d", argCount)
+        args = append(args, limit)
+        argCount++
+    }
+    if offset > 0 {
+        query += " OFFSET $" + fmt.Sprintf("%d", argCount)
+        args = append(args, offset)
+        argCount++
+    }
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+    rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query markets: %w", err)
+		return nil, 0, fmt.Errorf("query markets: %w", err)
 	}
 	defer rows.Close()
 
@@ -145,27 +155,38 @@ func (r *Repository) ListMarkets(ctx context.Context, status *models.MarketStatu
 			&market.CreatedAt, &market.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("scan market: %w", err)
+			return nil, 0, fmt.Errorf("scan market: %w", err)
 		}
 		markets = append(markets, market)
 	}
 
 	// Fetch options and liquidity pools for each market
-	for i := range markets {
-		options, err := r.GetOptionsByMarketID(ctx, markets[i].ID)
+    for i := range markets {
+        options, err := r.GetOptionsByMarketID(ctx, markets[i].ID)
 		if err != nil {
-			return nil, fmt.Errorf("get options for market %s: %w", markets[i].ID, err)
+			return nil, 0, fmt.Errorf("get options for market %s: %w", markets[i].ID, err)
 		}
 		markets[i].Options = options
 
 		pools, err := r.GetLiquidityPoolsByMarketID(ctx, markets[i].ID)
 		if err != nil {
-			return nil, fmt.Errorf("get liquidity pools for market %s: %w", markets[i].ID, err)
+			return nil, 0, fmt.Errorf("get liquidity pools for market %s: %w", markets[i].ID, err)
 		}
 		markets[i].LiquidityPools = pools
-	}
+    }
 
-	return markets, nil
+    var total64 int64
+    cntQuery := "SELECT COUNT(*) FROM markets WHERE 1=1"
+    cntArgs := []interface{}{}
+    if status != nil {
+        cntQuery += " AND status = $1"
+        cntArgs = append(cntArgs, *status)
+    }
+    if err := r.db.QueryRowContext(ctx, cntQuery, cntArgs...).Scan(&total64); err != nil {
+        return nil, 0, fmt.Errorf("count markets: %w", err)
+    }
+
+    return markets, int32(total64), nil
 }
 
 // UpdateMarket updates market fields

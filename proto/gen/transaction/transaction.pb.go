@@ -205,11 +205,13 @@ func (x *TransactionResponse) GetCreatedAt() *timestamppb.Timestamp {
 }
 
 type GetTransactionsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        *string                `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3,oneof" json:"user_id,omitempty"`
-	MarketId      *string                `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3,oneof" json:"market_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+    state         protoimpl.MessageState `protogen:"open.v1"`
+    UserId        *string                `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3,oneof" json:"user_id,omitempty"`
+    MarketId      *string                `protobuf:"bytes,2,opt,name=market_id,json=marketId,proto3,oneof" json:"market_id,omitempty"`
+    Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+    Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+    unknownFields protoimpl.UnknownFields
+    sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetTransactionsRequest) Reset() {
@@ -250,17 +252,28 @@ func (x *GetTransactionsRequest) GetUserId() string {
 }
 
 func (x *GetTransactionsRequest) GetMarketId() string {
-	if x != nil && x.MarketId != nil {
-		return *x.MarketId
-	}
-	return ""
+    if x != nil && x.MarketId != nil {
+        return *x.MarketId
+    }
+    return ""
+}
+
+func (x *GetTransactionsRequest) GetLimit() int32 {
+    if x != nil { return x.Limit }
+    return 0
+}
+
+func (x *GetTransactionsRequest) GetOffset() int32 {
+    if x != nil { return x.Offset }
+    return 0
 }
 
 type GetTransactionsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Transactions  []*Transaction         `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+    state         protoimpl.MessageState `protogen:"open.v1"`
+    Transactions  []*Transaction         `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
+    Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+    unknownFields protoimpl.UnknownFields
+    sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetTransactionsResponse) Reset() {
@@ -294,10 +307,15 @@ func (*GetTransactionsResponse) Descriptor() ([]byte, []int) {
 }
 
 func (x *GetTransactionsResponse) GetTransactions() []*Transaction {
-	if x != nil {
-		return x.Transactions
-	}
-	return nil
+    if x != nil {
+        return x.Transactions
+    }
+    return nil
+}
+
+func (x *GetTransactionsResponse) GetTotal() int32 {
+    if x != nil { return x.Total }
+    return 0
 }
 
 type Transaction struct {

@@ -122,24 +122,29 @@ func (s *Server) UpdateMarket(ctx context.Context, req *market.UpdateMarketReque
 
 // ListMarkets retrieves markets
 func (s *Server) ListMarkets(ctx context.Context, req *market.ListMarketsRequest) (*market.ListMarketsResponse, error) {
-	// Always constrain listings to active markets regardless of caller filters
-	activeStatus := models.MarketStatusActive
-	statusFilter := &activeStatus
+    // Constrain listings to active markets
+    activeStatus := models.MarketStatusActive
+    statusFilter := &activeStatus
+    limit := req.GetLimit()
+    offset := req.GetOffset()
+    if limit <= 0 { limit = 50 }
+    if offset < 0 { offset = 0 }
 
-	markets, err := s.service.ListMarkets(ctx, statusFilter)
-	if err != nil {
-		s.logger.Error("failed to list markets", zap.Error(err))
-		return nil, status.Error(codes.Internal, "failed to list markets")
-	}
+    markets, total, err := s.service.ListMarkets(ctx, statusFilter, limit, offset)
+    if err != nil {
+        s.logger.Error("failed to list markets", zap.Error(err))
+        return nil, status.Error(codes.Internal, "failed to list markets")
+    }
 
-	protoMarkets := make([]*market.Market, len(markets))
-	for i, marketModel := range markets {
-		protoMarkets[i] = convertMarketToProto(&marketModel)
-	}
+    protoMarkets := make([]*market.Market, len(markets))
+    for i, marketModel := range markets {
+        protoMarkets[i] = convertMarketToProto(&marketModel)
+    }
 
-	return &market.ListMarketsResponse{
-		Markets: protoMarkets,
-	}, nil
+    return &market.ListMarketsResponse{
+        Markets: protoMarkets,
+        Total: total,
+    }, nil
 }
 
 // GetMarketOptions retrieves options for a market with current LMSR prices
