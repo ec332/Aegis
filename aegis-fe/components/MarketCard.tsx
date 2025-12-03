@@ -17,6 +17,40 @@ export default function MarketCard({
   const formatPrice = (price?: number) =>
     typeof price === "number" ? `$${price.toFixed(2)}` : "–";
   const badgeText = market.description || market.status;
+  const parseTimestamp = (value: unknown): Date | null => {
+    if (value == null) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === "object") {
+      const obj = value as { seconds?: number; nanos?: number };
+      if (typeof obj.seconds === "number") {
+        const nanos = typeof obj.nanos === "number" ? obj.nanos : 0;
+        const date = new Date(obj.seconds * 1000 + nanos / 1_000_000);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+    const asString = typeof value === "string" ? value : String(value);
+    const normalized = asString.includes("T") ? asString : asString.replace(" ", "T");
+    const attempts = [normalized, `${normalized}Z`];
+    for (const candidate of attempts) {
+      const date = new Date(candidate);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+    return null;
+  };
+  const m = market as unknown as Record<string, unknown>;
+  const rawResolutionValue = (m["resolution_time"] ?? m["resolutionTime"] ?? m["end_time"] ?? m["endTime"]) as unknown;
+  const resolutionDate = parseTimestamp(rawResolutionValue);
+  const formattedResolutionDate = resolutionDate
+    ? resolutionDate.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-md p-4 sm:p-6 lg:p-8 hover:shadow-lg transition-shadow">
@@ -26,6 +60,7 @@ export default function MarketCard({
           {marketTitle}
         </h2>
         <p className="text-sm text-gray-600 mb-3">{market.description}</p>
+        <div className="text-xs text-gray-500">Resolves: {formattedResolutionDate}</div>
         {/* <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">
           {badgeText}
         </span> */}
