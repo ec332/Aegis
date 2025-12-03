@@ -123,8 +123,8 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              <div className="py-12">
-                <LoadingSkeleton lines={6} />
+              <div className="text-center py-12">
+                <p className="text-gray-600 text-lg">No active markets.</p>
               </div>
             )}
           </div>
