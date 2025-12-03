@@ -2,13 +2,13 @@
 
 import TransactionItem from "@/components/TransactionItem";
 import TradeModal from "@/components/TradeModal";
-import { fetchMarketById, fetchOptionsByMarketId, fetchUserTransactions } from "@/services/api";
+import { fetchMarketById, fetchOptionsByMarketId, fetchUserTransactions, getUserByWallet, createUser } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { Market, Option, Transaction } from "@/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function TransactionsPage() {
-  const { isAuthenticated, profile } = useAuthStore();
+  const { isAuthenticated, profile, wallet } = useAuthStore();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -19,24 +19,40 @@ export default function TransactionsPage() {
     [key: string]: { market: Market; option: Option };
   }>({});
   const transactionDetailsRef = useRef<{ [key: string]: { market: Market; option: Option } }>({});
+  const [resolvedUserId, setResolvedUserId] = useState<string>(profile?.id || "");
 
   useEffect(() => {
     transactionDetailsRef.current = transactionDetails;
   }, [transactionDetails]);
 
-  // Load user's transactions on mount and when auth changes
+  // Resolve user ID via wallet (tolerant to missing profile) and load transactions
   useEffect(() => {
-    if (!isAuthenticated || !profile?.id) {
-      setTransactions([]);
-      return;
-    }
-
     let cancelled = false;
-    const loadTransactions = async () => {
+    const resolveAndLoad = async () => {
       setIsLoading(true);
       setErrorMessage(null);
       try {
-        const result = await fetchUserTransactions(profile.id);
+        let uid = resolvedUserId;
+        if (!uid && wallet) {
+          const existing = await getUserByWallet(wallet);
+          if (cancelled) return;
+          if (existing && existing.id) {
+            uid = existing.id;
+            setResolvedUserId(existing.id);
+          } else {
+            try {
+              const created = await createUser(wallet);
+              if (cancelled) return;
+              uid = created.id;
+              setResolvedUserId(created.id);
+            } catch {}
+          }
+        }
+        if (!uid) {
+          setTransactions([]);
+          return;
+        }
+        const result = await fetchUserTransactions(uid);
         if (!cancelled) {
           setTransactions(result);
         }
@@ -51,12 +67,9 @@ export default function TransactionsPage() {
         }
       }
     };
-
-    loadTransactions();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, profile?.id]);
+    resolveAndLoad();
+    return () => { cancelled = true; };
+  }, [wallet, resolvedUserId]);
 
   // Load market and option details for each transaction
   useEffect(() => {
@@ -156,12 +169,12 @@ export default function TransactionsPage() {
               {isLoading && (
                 <div className="text-center py-8 text-gray-500">Loading transactions…</div>
               )}
-              {!isLoading && transactionList.length === 0 && !errorMessage && (
-                <div className="text-center py-12">
-                  <p className="text-gray-600 text-lg mb-4">No transactions yet</p>
-                  <p className="text-gray-500">Start trading to see your transactions here</p>
-                </div>
-              )}
+          {!isLoading && transactionList.length === 0 && !errorMessage && (
+            <div className="text-center py-12">
+              <p className="text-gray-600 text-lg mb-4">No transactions yet</p>
+              <p className="text-gray-500">Start trading to see your transactions here</p>
+            </div>
+          )}
               {transactionList.length > 0 && (
                 <div className="space-y-4">
                   {transactionList.map((transaction) => {

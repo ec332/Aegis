@@ -57,35 +57,36 @@ export default function Home() {
     }
   };
 
-  useEffect(() => {
-    const el = formDialogRef.current;
-    if (!isFormOpen || !el) return;
-    const focusables = el.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    first?.focus();
-    const keyHandler = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") {
-        setIsFormOpen(false);
-      } else if (ev.key === "Tab") {
-        if (focusables.length === 0) return;
-        const active = document.activeElement as HTMLElement;
-        if (ev.shiftKey) {
-          if (active === first) {
-            ev.preventDefault();
-            last?.focus();
-          }
-        } else {
-          if (active === last) {
-            ev.preventDefault();
-            first?.focus();
-          }
-        }
+  const parseTs = (value: unknown): Date | null => {
+    if (value == null) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === "object") {
+      const obj = value as { seconds?: number; nanos?: number };
+      if (typeof obj.seconds === "number") {
+        const nanos = typeof obj.nanos === "number" ? obj.nanos : 0;
+        const d = new Date(obj.seconds * 1000 + nanos / 1_000_000);
+        return Number.isNaN(d.getTime()) ? null : d;
       }
-    };
-    el.addEventListener("keydown", keyHandler);
-    return () => el.removeEventListener("keydown", keyHandler);
-  }, [isFormOpen]);
+    }
+    const s = typeof value === "string" ? value : String(value);
+    const n = s.includes("T") ? s : s.replace(" ", "T");
+    const tries = [n, `${n}Z`];
+    for (const cand of tries) {
+      const d = new Date(cand);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
+
+  const activeMarkets = markets.filter((m) => {
+    const anyM = m as unknown as Record<string, unknown>;
+    const raw = anyM["resolution_time"] ?? anyM["resolutionTime"] ?? anyM["end_time"] ?? anyM["endTime"];
+    const d = parseTs(raw);
+    if (!d) return true;
+    return d.getTime() >= Date.now();
+  });
 
   return (
     <main className="bg-white min-h-screen">
@@ -110,9 +111,9 @@ export default function Home() {
                 </button>
               )}
             </div>
-            {markets.length > 0 ? (
+            {activeMarkets.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {markets.map((market) => (
+                {activeMarkets.map((market) => (
                   <MarketCard
                     key={market.id}
                     market={market}

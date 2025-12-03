@@ -3,9 +3,20 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   turbopack: {
-    // Set root to the monorepo root to silence additional lockfile warning
-    // and allow resolving linked packages outside the app directory.
     root: path.resolve(__dirname, ".."),
+  },
+  async rewrites() {
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${base}/api/:path*`,
+      },
+      {
+        source: "/health",
+        destination: `${base}/health`,
+      },
+    ];
   },
 };
 

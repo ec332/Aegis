@@ -7,39 +7,53 @@ import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
 import { Market, Option } from "@/types";
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_USER_ID } from "@/constants";
-import { fetchUserTransactions } from "@/services/api";
+import { fetchUserTransactions, getUserByWallet } from "@/services/api";
 
 export default function MarketsPage() {
-  const { markets, marketOptions, loadOptionsForMarket, isBackendHealthy } = useAppStore();
-  const { isAuthenticated, profile } = useAuthStore();
+  const { markets, marketOptions, loadOptionsForMarket, isBackendHealthy, loadMarkets } = useAppStore();
+  const { isAuthenticated, profile, wallet } = useAuthStore();
   const [selectedMarket, setSelectedMarket] = useState<{ market: Market; options: Option[] } | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [subTab, setSubTab] = useState<"active" | "mine">("active");
   const [tick, setTick] = useState<number>(Date.now());
   const [myMarketIds, setMyMarketIds] = useState<string[]>([]);
+  const [userIdForFilter, setUserIdForFilter] = useState<string>(profile?.id || "");
 
   useEffect(() => {}, []);
 
   useEffect(() => {
-    const id = setInterval(() => setTick(Date.now()), 300000);
+    const id = setInterval(async () => {
+      setTick(Date.now());
+      try { await loadMarkets(); } catch {}
+    }, 300000);
     return () => clearInterval(id);
-  }, []);
+  }, [loadMarkets]);
 
   useEffect(() => {
-    if (subTab !== "mine") return;
-    const userId = profile?.id || DEFAULT_USER_ID;
-    if (!userId) return;
     let cancelled = false;
     (async () => {
       try {
-        const txs = await fetchUserTransactions(userId);
+        let uid = "";
+        if (wallet) {
+          const u = await getUserByWallet(wallet);
+          if (u && u.id) {
+            uid = u.id;
+          }
+        }
+        if (!uid && profile?.id) {
+          uid = profile.id;
+        }
+        if (!cancelled) setUserIdForFilter(uid);
+        if (!uid) {
+          if (!cancelled) setMyMarketIds([]);
+          return;
+        }
+        const txs = await fetchUserTransactions(uid);
         const ids = Array.from(new Set(txs.map((t) => t.market_id).filter(Boolean)));
         if (!cancelled) setMyMarketIds(ids);
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, [subTab, profile?.id]);
+  }, [profile?.id, wallet]);
 
   const parseTs = (value: unknown): Date | null => {
     if (value == null) return null;
@@ -64,16 +78,7 @@ export default function MarketsPage() {
     return null;
   };
 
-  const activeMarkets = useMemo(() => {
-    const now = tick;
-    return markets.filter((m) => {
-      const anyM = m as unknown as Record<string, unknown>;
-      const raw = anyM["resolution_time"] ?? anyM["resolutionTime"] ?? anyM["end_time"] ?? anyM["endTime"];
-      const d = parseTs(raw);
-      if (!d) return true;
-      return d.getTime() >= now;
-    });
-  }, [markets, tick]);
+  // Only show my markets on this page
 
   const myMarkets = useMemo(() => {
     if (!myMarketIds.length) return [] as Market[];
@@ -112,29 +117,7 @@ export default function MarketsPage() {
 
         <div className="mb-6" />
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-bold text-[#151b4d]">Markets</h2>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSubTab("active")}
-                className={`px-3 py-1 rounded-md text-sm font-semibold border ${
-                  subTab === "active" ? "bg-[#151b4d] text-white border-[#151b4d]" : "bg-gray-50 text-gray-700 border-gray-200"
-                }`}
-              >
-                Active
-              </button>
-              <button
-                type="button"
-                onClick={() => setSubTab("mine")}
-                className={`px-3 py-1 rounded-md text-sm font-semibold border ${
-                  subTab === "mine" ? "bg-[#151b4d] text-white border-[#151b4d]" : "bg-gray-50 text-gray-700 border-gray-200"
-                }`}
-              >
-                My Markets
-              </button>
-            </div>
-          </div>
+          <h2 className="text-2xl font-bold text-[#151b4d]">My Markets</h2>
           {isAuthenticated && (
             <button
               type="button"
@@ -146,9 +129,9 @@ export default function MarketsPage() {
           )}
         </div>
 
-        {(subTab === "active" ? activeMarkets : myMarkets).length > 0 ? (
+        {myMarkets.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(subTab === "active" ? activeMarkets : myMarkets).map((market) => (
+            {myMarkets.map((market) => (
               <MarketCard
                 key={market.id}
                 market={market}

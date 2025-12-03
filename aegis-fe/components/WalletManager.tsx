@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
+import { getUserByWallet, createUser } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
 import { WalletAccount, WalletTransaction } from '@/types';
 
@@ -16,7 +17,8 @@ export default function WalletManager({ userId }: { userId: string }) {
     depositFunds, 
     withdrawFunds 
   } = useAppStore();
-  const { isAuthenticated, token } = useAuthStore();
+  const { isAuthenticated, token, wallet } = useAuthStore();
+  const [walletUserId, setWalletUserId] = useState<string>("");
   
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -24,13 +26,33 @@ export default function WalletManager({ userId }: { userId: string }) {
   const [creatingWallet, setCreatingWallet] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    async function ensureWalletUser() {
+      if (!wallet) return;
+      const existing = await getUserByWallet(wallet);
+      if (cancelled) return;
+      if (existing) {
+        setWalletUserId(existing.id);
+      } else {
+        try {
+          const created = await createUser(wallet);
+          if (!cancelled) setWalletUserId(created.id);
+        } catch {}
+      }
+    }
+    ensureWalletUser();
+    return () => { cancelled = true; };
+  }, [wallet]);
+
+  useEffect(() => {
     if (!isAuthenticated || !token) {
       return;
     }
-    if (userId && !currentWallet) {
-      loadCurrentUserWallet(userId);
+    const uid = walletUserId || userId;
+    if (uid && !currentWallet) {
+      loadCurrentUserWallet(uid);
     }
-  }, [isAuthenticated, token, userId, currentWallet, loadCurrentUserWallet]);
+  }, [isAuthenticated, token, walletUserId, userId, currentWallet, loadCurrentUserWallet]);
 
   const handleDeposit = async () => {
     if (!depositAmount || !currentWallet) return;
@@ -132,20 +154,32 @@ export default function WalletManager({ userId }: { userId: string }) {
         ) : (
           <div className="text-center py-8">
             <p className="text-gray-500 mb-4">No wallet found</p>
-            <button
-              onClick={async () => {
-                if (!isAuthenticated || !token) {
-                  alert('Please sign in first');
-                  return;
-                }
-                if (creatingWallet) return;
-                setCreatingWallet(true);
-                try {
-                  await createWalletForUser(userId);
-                } finally {
-                  setCreatingWallet(false);
-                }
-              }}
+              <button
+                onClick={async () => {
+                  if (!isAuthenticated || !token) {
+                    alert('Please sign in first');
+                    return;
+                  }
+                  if (creatingWallet) return;
+                  setCreatingWallet(true);
+                  try {
+                    let resolvedUserId = walletUserId || userId;
+                    if (wallet && !walletUserId) {
+                      const u = await getUserByWallet(wallet);
+                      if (u) {
+                        resolvedUserId = u.id;
+                        setWalletUserId(u.id);
+                      } else {
+                        const created = await createUser(wallet);
+                        resolvedUserId = created.id;
+                        setWalletUserId(created.id);
+                      }
+                    }
+                    await createWalletForUser(resolvedUserId);
+                  } finally {
+                    setCreatingWallet(false);
+                  }
+                }}
               className={`bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors ${creatingWallet ? 'opacity-60 cursor-not-allowed' : ''}`}
               disabled={creatingWallet}
             >

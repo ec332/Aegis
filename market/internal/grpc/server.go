@@ -122,15 +122,12 @@ func (s *Server) UpdateMarket(ctx context.Context, req *market.UpdateMarketReque
 
 // ListMarkets retrieves markets
 func (s *Server) ListMarkets(ctx context.Context, req *market.ListMarketsRequest) (*market.ListMarketsResponse, error) {
-    // Constrain listings to active markets
-    activeStatus := models.MarketStatusActive
-    statusFilter := &activeStatus
     limit := req.GetLimit()
     offset := req.GetOffset()
     if limit <= 0 { limit = 50 }
     if offset < 0 { offset = 0 }
 
-    markets, total, err := s.service.ListMarkets(ctx, statusFilter, limit, offset)
+    markets, total, err := s.service.ListMarkets(ctx, nil, limit, offset)
     if err != nil {
         s.logger.Error("failed to list markets", zap.Error(err))
         return nil, status.Error(codes.Internal, "failed to list markets")
@@ -200,24 +197,33 @@ func (s *Server) GetMarketOptions(ctx context.Context, req *market.GetMarketOpti
 // Helper functions to convert between models and protobuf types
 
 func convertMarketToProto(marketModel *models.Market) *market.Market {
-	protoMarket := &market.Market{
-		Id:          marketModel.ID,
-		Question:    marketModel.Title,
-		Description: marketModel.Description,
-		Status:      string(marketModel.Status),
-		CreatedAt:   timestamppb.New(marketModel.CreatedAt),
-		UpdatedAt:   timestamppb.New(marketModel.UpdatedAt),
-	}
+    protoMarket := &market.Market{
+        Id:          marketModel.ID,
+        Question:    marketModel.Title,
+        Description: marketModel.Description,
+        Status:      string(marketModel.Status),
+        CreatedAt:   timestamppb.New(marketModel.CreatedAt),
+        UpdatedAt:   timestamppb.New(marketModel.UpdatedAt),
+    }
 
-	if marketModel.ResolutionDatetime != nil {
-		protoMarket.EndTime = timestamppb.New(*marketModel.ResolutionDatetime)
-	}
+    if marketModel.ResolutionDatetime != nil {
+        protoMarket.EndTime = timestamppb.New(*marketModel.ResolutionDatetime)
+    }
+
+    if marketModel.WinningOptionID != nil {
+        for _, opt := range marketModel.Options {
+            if opt.ID == *marketModel.WinningOptionID {
+                protoMarket.Outcome = opt.Title
+                break
+            }
+        }
+    }
 
 	// Options are returned via GetMarketOptions
 
 	// Liquidity pools are not part of current proto
 
-	return protoMarket
+    return protoMarket
 }
 
 func convertOptionToProto(optionModel *models.Option) *market.Option {

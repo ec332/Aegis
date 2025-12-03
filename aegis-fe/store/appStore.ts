@@ -406,6 +406,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         settlements: state.settlements.map(s => s.id === settlementId ? settlement : s)
       }));
+      if (settlement && settlement.market_id) {
+        await get().loadMarketById(settlement.market_id);
+      }
       return settlement;
     } catch (error) {
       console.error(`Error completing settlement ${settlementId}:`, error);

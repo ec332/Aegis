@@ -8,32 +8,35 @@ import (
 )
 
 type Config struct {
-	Port        string
-	HTTPPort    string
-	DatabaseURL string
-	RedisURL    string
+    Port        string
+    HTTPPort    string
+    DatabaseURL string
+    RedisURL    string
+    SettlementGRPCAddr string
 }
 
 // Load loads configuration from env variables
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+    _ = godotenv.Load()
 
-	port := getEnv("PORT", "8080")
-	databaseURL := getEnv("DATABASE_URL", "")
-	if databaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required")
-	}
+    port := getEnv("PORT", "8080")
+    databaseURL := getEnv("DATABASE_URL", "")
+    if databaseURL == "" {
+        return nil, fmt.Errorf("DATABASE_URL is required")
+    }
 
-	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
+    redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
 
-	httpPort := getEnv("HTTP_PORT", "8081")
+    httpPort := getEnv("HTTP_PORT", "8081")
+    settlementAddr := getEnv("SETTLEMENT_SERVICE_GRPC_ADDR", "settlement-service:50053")
 
-	return &Config{
-		Port:        port,
-		HTTPPort:    httpPort,
-		DatabaseURL: databaseURL,
-		RedisURL:    redisURL,
-	}, nil
+    return &Config{
+        Port:        port,
+        HTTPPort:    httpPort,
+        DatabaseURL: databaseURL,
+        RedisURL:    redisURL,
+        SettlementGRPCAddr: settlementAddr,
+    }, nil
 }
 
 // Fallback if no env variable is set

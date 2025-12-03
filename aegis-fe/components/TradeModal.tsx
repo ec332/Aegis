@@ -1,7 +1,6 @@
 "use client";
 
-import { DEFAULT_USER_ID } from "@/constants";
-import { createTransaction } from "@/services/api";
+import { createTransaction, getUserByWallet, createUser } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import {
   Market,
@@ -56,7 +55,27 @@ export default function TradeModal({
   };
 
   const profile = useAuthStore((state) => state.profile);
-  const resolvedUserId = userId || profile?.id || DEFAULT_USER_ID;
+  const wallet = useAuthStore((state) => state.wallet);
+  const [resolvedUserId, setResolvedUserId] = useState<string>(userId || profile?.id || "");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function resolveUser() {
+      if (!wallet) return;
+      const existing = await getUserByWallet(wallet);
+      if (cancelled) return;
+      if (existing && existing.id !== resolvedUserId) {
+        setResolvedUserId(existing.id);
+      } else if (!existing) {
+        try {
+          const created = await createUser(wallet);
+          if (!cancelled) setResolvedUserId(created.id);
+        } catch {}
+      }
+    }
+    resolveUser();
+    return () => { cancelled = true; };
+  }, [wallet]);
 
   // Pre-fill form if editing
   useEffect(() => {
