@@ -1,0 +1,19 @@
+.git/
+.trae/
+.vscode/
+.idea/
+.DS_Store
+*.log
+tmp/
+coverage/
+
+# Frontend build artifacts
+aegis-fe/node_modules/
+aegis-fe/.next/
+aegis-fe/dist/
+aegis-fe/out/
+
+# Docker/CI caches
+docker-desktop/
+**/*.cache/
+

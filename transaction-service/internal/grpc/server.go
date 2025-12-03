@@ -1,9 +1,10 @@
 package grpc
 
 import (
-	"context"
-	"fmt"
-	"time"
+    "context"
+    "fmt"
+    "strings"
+    "time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -12,25 +13,31 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/aegis/proto/gen/market"
-	"github.com/aegis/proto/gen/transaction"
-	"transaction-service/internal/model"
-	"transaction-service/internal/service"
+    "github.com/aegis/proto/gen/market"
+    "github.com/aegis/proto/gen/wallet"
+    "github.com/aegis/proto/gen/transaction"
+    "transaction-service/internal/model"
+    "transaction-service/internal/service"
+    "google.golang.org/grpc/metadata"
 )
 
 type TransactionGRPCServer struct {
-	transaction.UnimplementedTransactionServiceServer
-	svc          *service.TransactionService
-	marketClient market.MarketServiceClient
-	logger       *zap.Logger
+    transaction.UnimplementedTransactionServiceServer
+    svc          *service.TransactionService
+    marketClient market.MarketServiceClient
+    walletClient wallet.WalletServiceClient
+    defaultCurrency string
+    logger       *zap.Logger
 }
 
-func NewTransactionGRPCServer(svc *service.TransactionService, logger *zap.Logger, marketClient market.MarketServiceClient) *TransactionGRPCServer {
-	return &TransactionGRPCServer{
-		svc:          svc,
-		logger:       logger,
-		marketClient: marketClient,
-	}
+func NewTransactionGRPCServer(svc *service.TransactionService, logger *zap.Logger, marketClient market.MarketServiceClient, walletClient wallet.WalletServiceClient, defaultCurrency string) *TransactionGRPCServer {
+    return &TransactionGRPCServer{
+        svc:          svc,
+        logger:       logger,
+        marketClient: marketClient,
+        walletClient: walletClient,
+        defaultCurrency: strings.TrimSpace(defaultCurrency),
+    }
 }
 
 func (s *TransactionGRPCServer) CreateTransaction(ctx context.Context, req *transaction.TransactionRequest) (*transaction.TransactionResponse, error) {
@@ -80,24 +87,76 @@ func (s *TransactionGRPCServer) CreateTransaction(ctx context.Context, req *tran
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("price_per_share deviates from current price (%.4f vs %.4f)", req.PricePerShare, currentPrice))
 	}
 
-	// Create transaction model
-	transactionModel := model.Transaction{
-		ID:              uuid.New(),
-		UserID:          uuid.MustParse(req.UserId),
-		MarketID:        uuid.MustParse(req.MarketId),
-		OptionID:        uuid.MustParse(req.OptionId),
-		TransactionType: req.TransactionType.String(),
-		NumberOfShares:  decimal.NewFromInt(int64(req.NumberOfShares)),
-		PricePerShare:   decimal.NewFromFloat(req.PricePerShare),
-		CreatedAt:       time.Now().UTC(),
-	}
+    // Create transaction model
+    transactionModel := model.Transaction{
+        ID:              uuid.New(),
+        UserID:          uuid.MustParse(req.UserId),
+        MarketID:        uuid.MustParse(req.MarketId),
+        OptionID:        uuid.MustParse(req.OptionId),
+        TransactionType: req.TransactionType.String(),
+        NumberOfShares:  decimal.NewFromInt(int64(req.NumberOfShares)),
+        PricePerShare:   decimal.NewFromFloat(req.PricePerShare),
+        CreatedAt:       time.Now().UTC(),
+    }
 
-	// Insert into database
-	created, err := s.svc.Create(ctx, transactionModel)
-	if err != nil {
-		s.logger.Error("failed to create transaction", zap.Error(err))
-		return nil, status.Error(codes.Internal, "failed to create transaction")
-	}
+    // Compute amount = price_per_share * number_of_shares
+    amount := transactionModel.PricePerShare.Mul(transactionModel.NumberOfShares).InexactFloat64()
+
+    // Resolve user's wallet account by currency
+    currency := s.defaultCurrency
+    if currency == "" { currency = "USD" }
+    // propagate authorization metadata to wallet service
+    var ctxWithAuth = ctx
+    if md, ok := metadata.FromIncomingContext(ctx); ok {
+        ctxWithAuth = metadata.NewOutgoingContext(ctx, md)
+    }
+    accResp, err := s.walletClient.GetWalletAccountByUserID(ctxWithAuth, &wallet.GetWalletAccountByUserIDRequest{UserId: req.UserId, Currency: currency})
+    if err != nil {
+        st, _ := status.FromError(err)
+        if st.Code() == codes.NotFound {
+            return nil, status.Error(codes.NotFound, "wallet account not found")
+        }
+        s.logger.Error("failed to get wallet account", zap.String("user_id", req.UserId), zap.Error(err))
+        return nil, status.Error(codes.Internal, "wallet service error")
+    }
+    accountID := accResp.Account.Id
+
+    // Perform wallet update prior to persisting transaction
+    var walletErr error
+    refID := transactionModel.ID.String()
+    switch req.TransactionType {
+    case transaction.TransactionType_BUY:
+        _, walletErr = s.walletClient.Withdrawal(ctxWithAuth, &wallet.WithdrawalRequest{AccountId: accountID, Amount: amount, ReferenceId: refID})
+    case transaction.TransactionType_SELL:
+        _, walletErr = s.walletClient.Deposit(ctxWithAuth, &wallet.DepositRequest{AccountId: accountID, Amount: amount, ReferenceId: refID})
+    default:
+        return nil, status.Error(codes.InvalidArgument, "invalid transaction_type")
+    }
+    if walletErr != nil {
+        st, _ := status.FromError(walletErr)
+        if st.Code() == codes.FailedPrecondition || strings.Contains(strings.ToLower(walletErr.Error()), "insufficient funds") {
+            return nil, status.Error(codes.FailedPrecondition, "insufficient funds")
+        }
+        s.logger.Error("wallet operation failed", zap.String("account_id", accountID), zap.Error(walletErr))
+        return nil, status.Error(codes.Internal, "wallet operation failed")
+    }
+
+    // Persist transaction
+    created, err := s.svc.Create(ctx, transactionModel)
+    if err != nil {
+        s.logger.Error("failed to create transaction after wallet update", zap.Error(err))
+        // Compensating reversal
+        if req.TransactionType == transaction.TransactionType_BUY {
+            if _, rerr := s.walletClient.Deposit(ctxWithAuth, &wallet.DepositRequest{AccountId: accountID, Amount: amount, ReferenceId: refID}); rerr != nil {
+                s.logger.Error("compensation deposit failed", zap.Error(rerr))
+            }
+        } else if req.TransactionType == transaction.TransactionType_SELL {
+            if _, rerr := s.walletClient.Withdrawal(ctxWithAuth, &wallet.WithdrawalRequest{AccountId: accountID, Amount: amount, ReferenceId: refID}); rerr != nil {
+                s.logger.Error("compensation withdrawal failed", zap.Error(rerr))
+            }
+        }
+        return nil, status.Error(codes.Internal, "failed to create transaction")
+    }
 
 	return &transaction.TransactionResponse{
 		Id:        created.ID.String(),

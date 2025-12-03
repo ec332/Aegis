@@ -90,6 +90,7 @@ services:
       APP_DB_USER: postgres
       APP_DB_PASSWORD: postgres
       APP_MARKET_GRPC_ADDR: market-service:50051
+      APP_WALLET_SERVICE_GRPC_ADDR: wallet-service:50052
     depends_on:
       postgres:
         condition: service_healthy

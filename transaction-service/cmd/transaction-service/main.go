@@ -14,6 +14,7 @@ import (
 
     "github.com/aegis/proto/gen/market"
     pb "github.com/aegis/proto/gen/transaction"
+    "github.com/aegis/proto/gen/wallet"
     grpcServer "transaction-service/internal/grpc"
     "transaction-service/internal/log"
     "transaction-service/internal/service"
@@ -30,6 +31,8 @@ func main() {
     viper.SetDefault("DB_USER", "postgres")
     viper.SetDefault("DB_PASSWORD", "postgres")
     viper.SetDefault("MARKET_GRPC_ADDR", "localhost:50051")
+    viper.SetDefault("WALLET_SERVICE_GRPC_ADDR", "wallet-service:50052")
+    viper.SetDefault("WALLET_DEFAULT_CURRENCY", "USD")
 
     logger := log.New()
     defer logger.Sync()
@@ -64,6 +67,16 @@ func main() {
     marketClient := market.NewMarketServiceClient(marketConn)
     logger.Info("connected to market service", zap.String("addr", marketAddr))
 
+    // Create wallet gRPC client
+    walletAddr := viper.GetString("WALLET_SERVICE_GRPC_ADDR")
+    walletConn, err := grpc.Dial(walletAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+    if err != nil {
+        logger.Fatal("failed to connect to wallet service", zap.String("addr", walletAddr), zap.Error(err))
+    }
+    defer walletConn.Close()
+    walletClient := wallet.NewWalletServiceClient(walletConn)
+    logger.Info("connected to wallet service", zap.String("addr", walletAddr))
+
     // Create transaction service
     repo := postgres.New(pool)
     svc := service.NewTransactionService(repo)
@@ -76,7 +89,8 @@ func main() {
     }
 
     s := grpc.NewServer()
-    pb.RegisterTransactionServiceServer(s, grpcServer.NewTransactionGRPCServer(svc, logger, marketClient))
+    defaultCurrency := viper.GetString("WALLET_DEFAULT_CURRENCY")
+    pb.RegisterTransactionServiceServer(s, grpcServer.NewTransactionGRPCServer(svc, logger, marketClient, walletClient, defaultCurrency))
 
     logger.Info("starting gRPC server", zap.Int("port", grpcPort))
     if err := s.Serve(lis); err != nil {
