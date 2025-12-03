@@ -23,7 +23,9 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
     setError("");
 
     try {
-      const response = await fetch("http://localhost:8080/api/markets", {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+      const response = await fetch(`${API_BASE_URL}/api/markets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
