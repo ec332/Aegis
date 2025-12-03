@@ -5,7 +5,7 @@ import { DEFAULT_USER_ID } from "@/constants";
 // Client-side auth utilities for MetaMask-based Web3 login
 // Detailed comments included to assist future extension
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const TOKEN_KEY = "aegis.jwt";
 const isLocalHost = () => {
   if (typeof window === "undefined") return false;
@@ -180,7 +180,7 @@ export async function startWeb3Login(): Promise<{ token: string; profile: UserPr
 
 export async function devLogin(wallet: string = DEFAULT_USER_ID): Promise<{ token: string; profile: UserProfile | null; wallet: string }>
 {
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
   // Prefer /api/auth/dev-login, fallback to /auth/dev-login
   const tryPaths = ["/api/auth/dev-login", "/auth/dev-login"];
   let lastErr: any = null;

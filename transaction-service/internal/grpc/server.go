@@ -191,14 +191,24 @@ func (s *TransactionGRPCServer) GetTransactions(ctx context.Context, req *transa
     var transactions []model.Transaction
     var err error
 
-	// Apply filters if provided
-	if req.UserId != nil && *req.UserId != "" {
-		transactions, err = s.svc.FindByUserID(ctx, uuid.MustParse(*req.UserId))
-	} else if req.MarketId != nil && *req.MarketId != "" {
-		transactions, err = s.svc.FindByMarketID(ctx, uuid.MustParse(*req.MarketId))
-	} else {
-		transactions, err = s.svc.FindAll(ctx)
-	}
+    // Apply filters if provided, tolerate invalid UUIDs by returning empty results
+    if req.UserId != nil && *req.UserId != "" {
+        if uid, perr := uuid.Parse(*req.UserId); perr == nil {
+            transactions, err = s.svc.FindByUserID(ctx, uid)
+        } else {
+            transactions = []model.Transaction{}
+            err = nil
+        }
+    } else if req.MarketId != nil && *req.MarketId != "" {
+        if mid, perr := uuid.Parse(*req.MarketId); perr == nil {
+            transactions, err = s.svc.FindByMarketID(ctx, mid)
+        } else {
+            transactions = []model.Transaction{}
+            err = nil
+        }
+    } else {
+        transactions, err = s.svc.FindAll(ctx)
+    }
 
 	if err != nil {
 		s.logger.Error("failed to get transactions", zap.Error(err))

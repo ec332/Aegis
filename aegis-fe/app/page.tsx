@@ -53,6 +53,37 @@ export default function Home() {
     }
   };
 
+  const parseTs = (value: unknown): Date | null => {
+    if (value == null) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === "object") {
+      const obj = value as { seconds?: number; nanos?: number };
+      if (typeof obj.seconds === "number") {
+        const nanos = typeof obj.nanos === "number" ? obj.nanos : 0;
+        const d = new Date(obj.seconds * 1000 + nanos / 1_000_000);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+    }
+    const s = typeof value === "string" ? value : String(value);
+    const n = s.includes("T") ? s : s.replace(" ", "T");
+    const tries = [n, `${n}Z`];
+    for (const cand of tries) {
+      const d = new Date(cand);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
+
+  const activeMarkets = markets.filter((m) => {
+    const anyM = m as unknown as Record<string, unknown>;
+    const raw = anyM["resolution_time"] ?? anyM["resolutionTime"] ?? anyM["end_time"] ?? anyM["endTime"];
+    const d = parseTs(raw);
+    if (!d) return true;
+    return d.getTime() >= Date.now();
+  });
+
   return (
     <main className="bg-white min-h-screen">
       <div className="px-4 sm:px-6 lg:px-8 py-20 max-w-7xl mx-auto">
@@ -89,9 +120,9 @@ export default function Home() {
                 </button>
               )}
             </div>
-            {markets.length > 0 ? (
+            {activeMarkets.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {markets.map((market) => (
+                {activeMarkets.map((market) => (
                   <MarketCard
                     key={market.id}
                     market={market}

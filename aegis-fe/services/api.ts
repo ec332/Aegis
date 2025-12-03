@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 // API Response Types based on backend proto definitions
 export interface Market {
@@ -82,6 +82,17 @@ export interface Settlement {
   settled_at?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface User {
+  id: string;
+  wallet_address: string;
+  balance: number;
+  role: string;
+  nonce?: string;
+  created_at?: string;
+  updated_at?: string;
+  last_login?: string | null;
 }
 
 // Error handling and retry logic
@@ -299,6 +310,43 @@ export async function getWalletByUserId(userId: string): Promise<WalletAccount |
   } catch (error) {
     console.error(`Error fetching wallet by user ${userId}:`, error);
     return null;
+  }
+}
+
+export async function getUserByWallet(walletAddress: string): Promise<User | null> {
+  try {
+    const token = typeof window !== 'undefined' ? getStoredToken() : null;
+    const res = await fetch(`${API_BASE_URL}/api/users/wallet/${encodeURIComponent(walletAddress)}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (res.status === 404) {
+      return null;
+    }
+    if (!res.ok) {
+      throw new APIError(res.status, `HTTP ${res.status}: ${res.statusText}`);
+    }
+    const data = await res.json() as { user: User | null };
+    return data.user || null;
+  } catch (error) {
+    console.error(`Error fetching user by wallet ${walletAddress}:`, error);
+    return null;
+  }
+}
+
+export async function createUser(walletAddress: string, balance = 0, role = 'user'): Promise<User> {
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/users`, {
+      method: 'POST',
+      body: JSON.stringify({ wallet_address: walletAddress, balance, role }),
+    });
+    const data = await handleResponse<{ user: User }>(response);
+    return data.user;
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
   }
 }
 

@@ -54,6 +54,8 @@ services:
     build:
       context: .
       dockerfile: api-gateway/Dockerfile
+    volumes:
+      - ./api-gateway:/app        # Mount source code
     environment:
       PORT: 8080
       MARKET_SERVICE_GRPC_ADDR: market-service:50051
@@ -82,6 +84,8 @@ services:
     build:
       context: .
       dockerfile: transaction-service/Dockerfile
+    volumes:
+      - ./transaction-service:/app        # Mount source code
     environment:
       APP_GRPC_PORT: 50052
       APP_DB_HOST: postgres
@@ -102,6 +106,8 @@ services:
     build:
       context: .
       dockerfile: market/Dockerfile
+    volumes:
+      - ./market:/app        # Mount source code
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
       REDIS_URL: redis://redis:6379
@@ -127,6 +133,8 @@ services:
     build:
       context: .
       dockerfile: settlement/Dockerfile
+    volumes:
+      - ./settlement:/app        # Mount source code
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -144,6 +152,8 @@ services:
     build:
       context: .
       dockerfile: wallet/Dockerfile
+    volumes:
+      - ./wallet:/app        # Mount source code
     environment:
       WALLET_DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
       WALLET_SERVICE_PORT: 50052

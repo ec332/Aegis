@@ -249,7 +249,13 @@ func (g *APIGateway) getMarket(ctx context.Context, w http.ResponseWriter, r *ht
             }
         }
         out := map[string]interface{}{"market": resp.Market}
-        if g.redis != nil { g.setCacheJSON(ctx, cacheKey, out, g.jitterTTL(60*time.Second)) }
+        if g.redis != nil {
+            ttl := 60 * time.Second
+            if resp.Market != nil && strings.EqualFold(resp.Market.Status, "resolved") {
+                ttl = 5 * time.Second
+            }
+            g.setCacheJSON(ctx, cacheKey, out, g.jitterTTL(ttl))
+        }
         return out, nil
     })
     if v == nil {
@@ -647,31 +653,44 @@ func (g *APIGateway) getUser(ctx context.Context, w http.ResponseWriter, r *http
 }
 
 func (g *APIGateway) getUserByWallet(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	// Extract wallet address from path like /api/users/wallet/{wallet_address}
-	parts := strings.Split(r.URL.Path, "/")
-	var walletAddress string
-	for i, part := range parts {
-		if part == "wallet" && i+1 < len(parts) {
-			walletAddress = parts[i+1]
-			break
-		}
-	}
+    // Extract wallet address from path like /api/users/wallet/{wallet_address}
+    parts := strings.Split(r.URL.Path, "/")
+    var walletAddress string
+    for i, part := range parts {
+        if part == "wallet" && i+1 < len(parts) {
+            walletAddress = parts[i+1]
+            break
+        }
+    }
 
-	if walletAddress == "" {
-		http.Error(w, "Wallet address required", http.StatusBadRequest)
-		return
-	}
+    if walletAddress == "" {
+        http.Error(w, "Wallet address required", http.StatusBadRequest)
+        return
+    }
 
-	req := &wallet.GetUserByWalletRequest{WalletAddress: walletAddress}
+    req := &wallet.GetUserByWalletRequest{WalletAddress: walletAddress}
 
-	resp, err := g.walletStub.GetUserByWallet(ctx, req)
+    resp, err := g.walletStub.GetUserByWallet(ctx, req)
 
-	if err != nil {
-		g.handleGRPCError(ctx, w, err, "wallet", "GetUserByWallet")
-		return
-	}
+    if err != nil {
+        if st, ok := status.FromError(err); ok {
+            switch st.Code() {
+            case codes.InvalidArgument:
+                http.Error(w, "Wallet address required", http.StatusBadRequest)
+                return
+            case codes.NotFound:
+                g.writeJSONResponse(w, http.StatusNotFound, map[string]interface{}{"user": nil})
+                return
+            default:
+                g.writeJSONResponse(w, http.StatusNotFound, map[string]interface{}{"user": nil})
+                return
+            }
+        }
+        g.writeJSONResponse(w, http.StatusNotFound, map[string]interface{}{"user": nil})
+        return
+    }
 
-	g.writeJSONResponse(w, http.StatusOK, resp)
+    g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 func (g *APIGateway) createUser(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -802,14 +821,30 @@ func (g *APIGateway) completeSettlement(ctx context.Context, w http.ResponseWrit
 	}
 	req.Id = settlementID
 
-	resp, err := g.settlementStub.CompleteSettlement(ctx, &req)
+    resp, err := g.settlementStub.CompleteSettlement(ctx, &req)
 
 	if err != nil {
 		g.handleGRPCError(ctx, w, err, "settlement", "CompleteSettlement")
 		return
 	}
 
-	g.writeJSONResponse(w, http.StatusOK, resp)
+    // Invalidate related caches to reflect winner and status changes promptly
+    if g.redis != nil && resp != nil && resp.Settlement != nil {
+        mid := strings.TrimSpace(resp.Settlement.MarketId)
+        if mid != "" {
+            _ = g.redis.Del(ctx, fmt.Sprintf("market:%s:summary", mid)).Err()
+            _ = g.redis.Del(ctx, fmt.Sprintf("market:%s:options", mid)).Err()
+            // Invalidate listing pages via SCAN
+            cursor := uint64(0)
+            for {
+                keys, cur, _ := g.redis.Scan(ctx, cursor, "markets:list:page:*", 100).Result()
+                if len(keys) > 0 { _, _ = g.redis.Del(ctx, keys...).Result() }
+                cursor = cur
+                if cursor == 0 { break }
+            }
+        }
+    }
+    g.writeJSONResponse(w, http.StatusOK, resp)
 }
 
 func (g *APIGateway) handleGRPCError(ctx context.Context, w http.ResponseWriter, err error, service, method string) {

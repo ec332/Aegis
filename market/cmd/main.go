@@ -12,6 +12,7 @@ import (
     "time"
 
     market "github.com/aegis/proto/gen/market"
+    settlement "github.com/aegis/proto/gen/settlement"
     grpcserver "github.com/aegis/shared/grpc"
     "github.com/aegis/shared/utils"
     marketgrpc "github.com/ec332/aegis/market/internal/grpc"
@@ -77,9 +78,15 @@ func main() {
 	}
 	logger.Info("Redis connected")
 
-	// Initialize service
-	svc := service.New(repo, redisClient, logger)
-	logger.Info("Service initialized")
+    settlementConn, err := grpc.Dial(cfg.SettlementGRPCAddr, grpc.WithInsecure())
+    if err != nil {
+        logger.Fatal("Failed to connect to settlement service", zap.Error(err))
+    }
+    defer settlementConn.Close()
+    settlementClient := settlement.NewSettlementServiceClient(settlementConn)
+
+    svc := service.New(repo, redisClient, logger, settlementClient)
+    logger.Info("Service initialized")
 
     // Create gRPC server
     grpcServer := grpc.NewServer(
@@ -105,13 +112,33 @@ func main() {
 		logger.Fatal("Failed to create listener", zap.Error(err))
 	}
 
-	// Start gRPC server
-	go func() {
-		logger.Info("Market gRPC service starting", zap.String("address", addr))
-		if err := grpcServer.Serve(lis); err != nil {
-			logger.Fatal("Failed to serve gRPC", zap.Error(err))
-		}
-	}()
+    // Start gRPC server
+    go func() {
+        logger.Info("Market gRPC service starting", zap.String("address", addr))
+        if err := grpcServer.Serve(lis); err != nil {
+            logger.Fatal("Failed to serve gRPC", zap.Error(err))
+        }
+    }()
+
+    // Run an immediate settlement sweep on startup to catch backlog
+    go func() {
+        time.Sleep(3 * time.Second)
+        ctxInit, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+        now := time.Now()
+        _ = svc.TriggerSettlementsForExpiredMarkets(ctxInit, now.Add(-24*time.Hour), now)
+        cancel()
+    }()
+
+    settleTicker := time.NewTicker(1 * time.Minute)
+    go func() {
+        for range settleTicker.C {
+            ctxTick, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+            since := time.Now().Add(-1 * time.Minute)
+            until := time.Now()
+            _ = svc.TriggerSettlementsForExpiredMarkets(ctxTick, since, until)
+            cancel()
+        }
+    }()
 
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
@@ -127,8 +154,10 @@ func main() {
 	// Set health status to not serving
 	healthServer.SetServingStatus("market.MarketService", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 
-	// Stop accepting new connections
-	grpcServer.GracefulStop()
+    // Stop accepting new connections
+    grpcServer.GracefulStop()
+
+    settleTicker.Stop()
 
 	// Wait for ongoing RPCs to complete
 	<-shutdownCtx.Done()

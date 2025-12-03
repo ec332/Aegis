@@ -3,8 +3,9 @@
 import { Market, Option } from "@/types";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { useAppStore } from "@/store/appStore";
 import { DEFAULT_USER_ID } from "@/constants";
-import { fetchUserTransactionsForMarket } from "@/services/api";
+import { fetchUserTransactionsForMarket, getUserByWallet, createUser } from "@/services/api";
 
 interface MarketCardProps {
   market: Market;
@@ -22,7 +23,8 @@ export default function MarketCard({
     typeof price === "number" ? `$${price.toFixed(2)}` : "–";
   const badgeText = market.description || market.status;
   const [holdings, setHoldings] = useState<Record<string, number>>({});
-  const userId = useAuthStore((s) => s.profile?.id) || DEFAULT_USER_ID;
+  const wallet = useAuthStore((s) => s.wallet);
+  const [resolvedUserId, setResolvedUserId] = useState<string>(useAuthStore((s) => s.profile?.id) || "");
   const parseTimestamp = (value: unknown): Date | null => {
     if (value == null) return null;
     if (value instanceof Date) {
@@ -49,6 +51,9 @@ export default function MarketCard({
   const rawResolutionValue = (m["resolution_time"] ?? m["resolutionTime"] ?? m["end_time"] ?? m["endTime"]) as unknown;
   const resolutionDate = parseTimestamp(rawResolutionValue);
   const isExpired = !!resolutionDate && resolutionDate.getTime() < Date.now();
+  const winner = (market as any).outcome ? String((market as any).outcome) : "";
+  const loadMarketById = useAppStore((s) => s.loadMarketById);
+  const [refreshedWinner, setRefreshedWinner] = useState(false);
   const formattedResolutionDate = resolutionDate
     ? resolutionDate.toLocaleString("en-US", {
         year: "numeric",
@@ -63,8 +68,28 @@ export default function MarketCard({
     let cancelled = false;
     (async () => {
       try {
-        if (!userId) return;
-        const txs = await fetchUserTransactionsForMarket(userId, market.id);
+        if (!wallet) return;
+        const existing = await getUserByWallet(wallet);
+        if (cancelled) return;
+        if (existing && existing.id !== resolvedUserId) {
+          setResolvedUserId(existing.id);
+        } else if (!existing) {
+          try {
+            const created = await createUser(wallet);
+            if (!cancelled) setResolvedUserId(created.id);
+          } catch {}
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [wallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!resolvedUserId) return;
+        const txs = await fetchUserTransactionsForMarket(resolvedUserId, market.id);
         const byOption: Record<string, number> = {};
         for (const tx of txs) {
           const shares = tx.number_of_shares || 0;
@@ -82,7 +107,18 @@ export default function MarketCard({
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, [userId, market.id]);
+  }, [resolvedUserId, market.id]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (isExpired && !winner && !refreshedWinner) {
+        await loadMarketById(market.id);
+        if (active) setRefreshedWinner(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [isExpired, winner, refreshedWinner, market.id, loadMarketById]);
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-md p-4 sm:p-6 lg:p-8 hover:shadow-lg transition-shadow">
@@ -93,6 +129,11 @@ export default function MarketCard({
         </h2>
         <p className="text-sm text-gray-600 mb-3">{market.description}</p>
         <div className="text-xs text-gray-500">Resolves: {formattedResolutionDate}</div>
+        {isExpired && (
+          <div className="mt-2 inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+            {winner ? `Winner: ${winner}` : "Winner: Pending"}
+          </div>
+        )}
         {/* <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">
           {badgeText}
         </span> */}
@@ -104,11 +145,12 @@ export default function MarketCard({
           const price = formatPrice(option.current_price);
           const owned = holdings[option.id] || 0;
           if (isExpired) {
+            const isWinner = winner && label && label.toUpperCase() === winner.toUpperCase();
             return (
               <div
                 key={option.id}
                 className={`px-6 py-3 text-white rounded-md transition-colors font-medium flex-1 ${
-                  index % 2 === 0 ? "bg-gray-600" : "bg-gray-500"
+                  isWinner ? "bg-green-600" : index % 2 === 0 ? "bg-gray-600" : "bg-gray-500"
                 }`}
               >
                 <div className="flex flex-col">

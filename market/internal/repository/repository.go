@@ -435,3 +435,84 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 
 	return nil
 }
+
+func (r *Repository) ListResolvedMarketsInRange(ctx context.Context, since, until time.Time) ([]models.Market, error) {
+    query := `
+        SELECT id, winning_option_id, resolution_datetime
+        FROM markets
+        WHERE status = $1
+          AND resolution_datetime IS NOT NULL
+          AND resolution_datetime BETWEEN $2 AND $3
+          AND winning_option_id IS NOT NULL
+    `
+    rows, err := r.db.QueryContext(ctx, query, models.MarketStatusResolved, since, until)
+    if err != nil {
+        return nil, fmt.Errorf("query resolved markets in range: %w", err)
+    }
+    defer rows.Close()
+    markets := []models.Market{}
+    for rows.Next() {
+        var m models.Market
+        err := rows.Scan(&m.ID, &m.WinningOptionID, &m.ResolutionDatetime)
+        if err != nil {
+            return nil, fmt.Errorf("scan market: %w", err)
+        }
+        m.Status = models.MarketStatusResolved
+        markets = append(markets, m)
+    }
+    return markets, nil
+}
+
+func (r *Repository) ListExpiredMarketsInRange(ctx context.Context, since, until time.Time) ([]models.Market, error) {
+    query := `
+        SELECT id, resolution_datetime
+        FROM markets
+        WHERE status = $1
+          AND resolution_datetime IS NOT NULL
+          AND resolution_datetime BETWEEN $2 AND $3
+    `
+    rows, err := r.db.QueryContext(ctx, query, models.MarketStatusActive, since, until)
+    if err != nil {
+        return nil, fmt.Errorf("query expired markets in range: %w", err)
+    }
+    defer rows.Close()
+    markets := []models.Market{}
+    for rows.Next() {
+        var m models.Market
+        err := rows.Scan(&m.ID, &m.ResolutionDatetime)
+        if err != nil {
+            return nil, fmt.Errorf("scan market: %w", err)
+        }
+        m.Status = models.MarketStatusActive
+        markets = append(markets, m)
+    }
+    return markets, nil
+}
+
+func (r *Repository) ListMarketsNeedingResolution(ctx context.Context, cutoff time.Time, limit int) ([]models.Market, error) {
+    query := `
+        SELECT id, resolution_datetime
+        FROM markets
+        WHERE status = $1
+          AND resolution_datetime IS NOT NULL
+          AND resolution_datetime <= $2
+          AND winning_option_id IS NULL
+        ORDER BY resolution_datetime ASC
+        LIMIT $3
+    `
+    rows, err := r.db.QueryContext(ctx, query, models.MarketStatusActive, cutoff, limit)
+    if err != nil {
+        return nil, fmt.Errorf("query markets needing resolution: %w", err)
+    }
+    defer rows.Close()
+    markets := []models.Market{}
+    for rows.Next() {
+        var m models.Market
+        if err := rows.Scan(&m.ID, &m.ResolutionDatetime); err != nil {
+            return nil, fmt.Errorf("scan market: %w", err)
+        }
+        m.Status = models.MarketStatusActive
+        markets = append(markets, m)
+    }
+    return markets, nil
+}

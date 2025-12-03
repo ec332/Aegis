@@ -2,9 +2,12 @@ package service
 
 import (
     "context"
+    "crypto/rand"
     "fmt"
+    "strings"
     "time"
 
+    settlement "github.com/aegis/proto/gen/settlement"
     "github.com/ec332/aegis/market/internal/repository"
     "github.com/ec332/aegis/market/pkg/models"
     "github.com/google/uuid"
@@ -14,18 +17,20 @@ import (
 
 // Service handles business logic for markets
 type Service struct {
-	repo        *repository.Repository
-	redisClient *redis.Client
-	logger      *zap.Logger
+    repo        *repository.Repository
+    redisClient *redis.Client
+    logger      *zap.Logger
+    settlementClient settlement.SettlementServiceClient
 }
 
 // New creates a new service instance
-func New(repo *repository.Repository, redisClient *redis.Client, logger *zap.Logger) *Service {
-	return &Service{
-		repo:        repo,
-		redisClient: redisClient,
-		logger:      logger,
-	}
+func New(repo *repository.Repository, redisClient *redis.Client, logger *zap.Logger, settlementClient settlement.SettlementServiceClient) *Service {
+    return &Service{
+        repo:        repo,
+        redisClient: redisClient,
+        logger:      logger,
+        settlementClient: settlementClient,
+    }
 }
 
 // CreateMarket creates a new market with validation (called by API Gateway)
@@ -263,14 +268,14 @@ func (s *Service) validateCreateMarketRequest(req models.CreateMarketRequest) er
 }
 
 func (s *Service) validateStatusTransition(from, to models.MarketStatus) error {
-	// Define valid transitions
-	validTransitions := map[models.MarketStatus][]models.MarketStatus{
-		models.MarketStatusDraft:     {models.MarketStatusActive, models.MarketStatusHidden},
-		models.MarketStatusActive:    {models.MarketStatusHidden, models.MarketStatusResolving},
-		models.MarketStatusHidden:    {models.MarketStatusActive, models.MarketStatusDraft},
-		models.MarketStatusResolving: {models.MarketStatusResolved},
-		models.MarketStatusResolved:  {},
-	}
+    // Define valid transitions
+    validTransitions := map[models.MarketStatus][]models.MarketStatus{
+        models.MarketStatusDraft:     {models.MarketStatusActive, models.MarketStatusHidden},
+        models.MarketStatusActive:    {models.MarketStatusHidden, models.MarketStatusResolving, models.MarketStatusResolved},
+        models.MarketStatusHidden:    {models.MarketStatusActive, models.MarketStatusDraft},
+        models.MarketStatusResolving: {models.MarketStatusResolved},
+        models.MarketStatusResolved:  {},
+    }
 
 	allowed, exists := validTransitions[from]
 	if !exists {
@@ -284,4 +289,64 @@ func (s *Service) validateStatusTransition(from, to models.MarketStatus) error {
 	}
 
 	return fmt.Errorf("cannot transition from %s to %s", from, to)
+}
+
+func (s *Service) TriggerSettlementsForExpiredMarkets(ctx context.Context, since, until time.Time) error {
+    s.logger.Info("cron settlement sweep", zap.Time("since", since), zap.Time("until", until))
+    markets, err := s.repo.ListMarketsNeedingResolution(ctx, until, 100)
+    if err != nil {
+        return err
+    }
+    s.logger.Info("cron settlement candidates", zap.Int("count", len(markets)))
+    for _, m := range markets {
+        s.logger.Info("cron resolving market", zap.String("market_id", m.ID))
+        var sid string
+        var win string
+        req := &settlement.CreateSettlementRequest{MarketId: m.ID}
+        resp, err := s.settlementClient.CreateSettlement(ctx, req)
+        if err == nil && resp != nil && resp.Settlement != nil {
+            sid = resp.Settlement.GetId()
+            comp, cerr := s.settlementClient.CompleteSettlement(ctx, &settlement.CompleteSettlementRequest{Id: sid})
+            if cerr == nil && comp != nil && comp.Settlement != nil {
+                win = strings.TrimSpace(comp.Settlement.GetWinningOptionId())
+            } else {
+                s.logger.Error("complete settlement failed", zap.String("settlement_id", sid), zap.Error(cerr))
+            }
+        } else {
+            s.logger.Error("create settlement failed", zap.String("market_id", m.ID), zap.Error(err))
+        }
+        if strings.TrimSpace(win) == "" {
+            opts, oerr := s.repo.GetOptionsByMarketID(ctx, m.ID)
+            if oerr == nil && len(opts) > 0 {
+                b := make([]byte, 1)
+                if _, rerr := rand.Read(b); rerr == nil {
+                    idx := int(b[0]) % len(opts)
+                    win = opts[idx].ID
+                } else {
+                    win = opts[0].ID
+                }
+                s.logger.Info("assigned fallback winner", zap.String("market_id", m.ID), zap.String("option_id", win))
+            } else {
+                s.logger.Warn("no options available to assign winner", zap.String("market_id", m.ID), zap.Error(oerr))
+            }
+        }
+        statusResolved := models.MarketStatusResolved
+        if strings.TrimSpace(win) != "" {
+            if err := s.repo.UpdateMarket(ctx, m.ID, models.UpdateMarketRequest{Status: &statusResolved, WinningOptionID: &win}); err != nil {
+                s.logger.Error("failed to persist market winner", zap.String("market_id", m.ID), zap.Error(err))
+            }
+        } else {
+            if err := s.repo.UpdateMarket(ctx, m.ID, models.UpdateMarketRequest{Status: &statusResolved}); err != nil {
+                s.logger.Error("failed to mark market resolved", zap.String("market_id", m.ID), zap.Error(err))
+            }
+        }
+        if strings.TrimSpace(sid) != "" {
+            _, perr := s.settlementClient.ProcessPayout(ctx, &settlement.ProcessPayoutRequest{SettlementId: sid})
+            if perr != nil {
+                s.logger.Warn("process payout returned error", zap.String("settlement_id", sid), zap.Error(perr))
+            }
+        }
+        s.logger.Info("market resolved", zap.String("market_id", m.ID), zap.String("settlement_id", sid), zap.String("winning_option_id", win))
+    }
+    return nil
 }

@@ -23,7 +23,7 @@ export default function MarketForm({ onCreated }: MarketFormProps) {
     setError("");
 
     try {
-      const response = await fetch("http://localhost:8080/api/markets", {
+      const response = await fetch("/api/markets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
