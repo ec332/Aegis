@@ -70,7 +70,7 @@ func NewResilientClient(config ClientConfig, logger *zap.Logger) (*ResilientClie
     if err != nil {
         return nil, fmt.Errorf("invalid target for %s: %w", config.ServiceName, err)
     }
-    conn, err := grpc.DialContext(ctx, target, append(opts, grpc.WithBlock())...)
+    conn, err := grpc.DialContext(ctx, target, opts...)
     if err != nil {
         return nil, fmt.Errorf("failed to connect to gRPC service %s: %w", config.ServiceName, err)
     }
@@ -95,6 +95,7 @@ func NewResilientClient(config ClientConfig, logger *zap.Logger) (*ResilientClie
 
 func buildDialOptions(config ClientConfig) (string, []grpc.DialOption, error) {
     raw := strings.TrimSpace(config.Target)
+    raw = strings.Trim(raw, "\"'`")
     if raw == "" {
         return "", nil, fmt.Errorf("empty target")
     }
