@@ -96,6 +96,51 @@ http://localhost:8080/api/
 ### Authentication
 Development includes a dev login endpoint; production authentication is gRPC-token capable.
 
+#### MetaMask Nonce Verification (SIWE-style)
+
+- Authenticate wallet ownership using a one-time nonce challenge signed in MetaMask.
+- Store the latest nonce in `users.nonce` and rotate it after successful login to prevent replay.
+
+Flow
+
+1. Request a nonce challenge for a wallet address
+   ```bash
+   curl "http://localhost:8080/api/auth/nonce?address=0xYourWallet"
+   # → {"nonce":"<random>","expires_at":"2025-01-01T00:00:00Z"}
+   ```
+2. Sign the nonce with MetaMask (`personal_sign`) on the client
+   ```js
+   const [address] = await ethereum.request({ method: 'eth_requestAccounts' })
+   const res = await fetch(`/api/auth/nonce?address=${address}`)
+   const { nonce } = await res.json()
+   const message = `Aegis login\nNonce: ${nonce}`
+   const signature = await ethereum.request({ method: 'personal_sign', params: [message, address] })
+   ```
+3. Submit the signature for verification
+   ```bash
+   curl -X POST http://localhost:8080/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{
+       "address": "0xYourWallet",
+       "nonce": "<random>",
+       "signature": "0xSignature"
+     }'
+   # → {"token":"<jwt-or-grpc-token>","user_id":"<uuid>"}
+   ```
+
+Server-side verification
+
+- Recover signer from `signature` over the exact `message` and compare to `address`.
+- Validate nonce is current, unexpired, and unused; then rotate to a new random value.
+- Issue a short-lived JWT or gRPC auth token; include `user_id` and `role` claims.
+- Prefer EIP-4361 (Sign-In with Ethereum) formatting for the message; use `personal_sign` (EIP-191), not `eth_sign`.
+- Apply rate limiting and set a maximum nonce TTL (e.g., 5 minutes).
+
+Notes
+
+- The `users` table includes `nonce TEXT NOT NULL` which is used as the one-time challenge.
+- In production, return tokens compatible with the API Gateway’s gRPC authentication.
+
 ### Endpoints
 
 #### Users
