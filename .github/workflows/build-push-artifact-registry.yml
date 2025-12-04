@@ -36,6 +36,13 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Ensure Artifact Registry repositories
+        run: |
+          gcloud artifacts repositories describe "$REPOSITORY" --location="$REGION" || \
+          gcloud artifacts repositories create "$REPOSITORY" --repository-format=docker --location="$REGION"
+          gcloud artifacts repositories describe "$CACHE_REPOSITORY" --location="$REGION" || \
+          gcloud artifacts repositories create "$CACHE_REPOSITORY" --repository-format=docker --location="$REGION"
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev -q
 
