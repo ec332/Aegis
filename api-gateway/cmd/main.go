@@ -1202,12 +1202,13 @@ func main() {
 		MaxAge:           300,
 	})
 
-	handler := corsMiddleware(router)
-
-	logger.Info("Starting API Gateway on :8080")
-	if err := http.ListenAndServe(":8080", handler); err != nil {
-		logger.Fatal("Failed to start server", zap.Error(err))
-	}
+    handler := corsMiddleware(router)
+    port := strings.TrimSpace(getEnv("PORT", "8080"))
+    addr := fmt.Sprintf(":%s", port)
+    logger.Info("Starting API Gateway", zap.String("addr", addr))
+    if err := http.ListenAndServe(addr, handler); err != nil {
+        logger.Fatal("Failed to start server", zap.Error(err))
+    }
 }
 
 func (g *APIGateway) requestNonce(ctx context.Context, w http.ResponseWriter, r *http.Request) {

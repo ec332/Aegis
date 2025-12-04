@@ -2,17 +2,24 @@ package grpc
 
 import (
     "context"
+    "crypto/tls"
     "errors"
     "fmt"
+    "net/url"
+    "os"
+    "strings"
     "time"
 
 	"github.com/aegis/shared/circuitbreaker"
-	"github.com/aegis/shared/kafka"
-	"github.com/aegis/shared/retry"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+    	"github.com/aegis/shared/kafka"
+    	"github.com/aegis/shared/retry"
+    	"go.uber.org/zap"
+    	"google.golang.org/api/idtoken"
+    	"google.golang.org/grpc"
+    	"google.golang.org/grpc/codes"
+    	"google.golang.org/grpc/credentials"
+    	"google.golang.org/grpc/credentials/oauth"
+    	"google.golang.org/grpc/status"
 )
 
 const (
@@ -56,14 +63,17 @@ type ResilientClient struct {
 }
 
 func NewResilientClient(config ClientConfig, logger *zap.Logger) (*ResilientClient, error) {
-	// Create gRPC connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
-	conn, err := grpc.DialContext(ctx, config.Target, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to gRPC service %s: %w", config.ServiceName, err)
-	}
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    target, opts, err := buildDialOptions(config)
+    if err != nil {
+        return nil, fmt.Errorf("invalid target for %s: %w", config.ServiceName, err)
+    }
+    conn, err := grpc.DialContext(ctx, target, append(opts, grpc.WithBlock())...)
+    if err != nil {
+        return nil, fmt.Errorf("failed to connect to gRPC service %s: %w", config.ServiceName, err)
+    }
 
 	// Create circuit breaker
 	cb := circuitbreaker.NewCircuitBreaker(config.ServiceName, config.CircuitBreaker, logger)
@@ -81,6 +91,38 @@ func NewResilientClient(config ClientConfig, logger *zap.Logger) (*ResilientClie
         kafkaProducer:  kafkaProducer,
         logger:         logger,
     }, nil
+}
+
+func buildDialOptions(config ClientConfig) (string, []grpc.DialOption, error) {
+    raw := strings.TrimSpace(config.Target)
+    if raw == "" {
+        return "", nil, fmt.Errorf("empty target")
+    }
+    if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+        u, err := url.Parse(raw)
+        if err != nil {
+            return "", nil, err
+        }
+        host := u.Host
+        port := "443"
+        if u.Scheme == "http" {
+            port = "80"
+        }
+        tlsConf := &tls.Config{ServerName: host}
+        opts := []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(tlsConf))}
+        aud := strings.TrimSpace(os.Getenv(strings.ToUpper(config.ServiceName) + "_AUDIENCE"))
+        if aud == "" && u.Scheme == "https" {
+            aud = u.String()
+        }
+        if aud != "" && strings.ToLower(os.Getenv("GRPC_DISABLE_AUTH")) != "true" {
+            ts, err := idtoken.NewTokenSource(context.Background(), aud)
+            if err == nil {
+                opts = append(opts, grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: ts}))
+            }
+        }
+        return host + ":" + port, opts, nil
+    }
+    return raw, []grpc.DialOption{grpc.WithInsecure()}, nil
 }
 
 func (c *ResilientClient) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {

@@ -120,6 +120,31 @@ resource "google_cloud_run_service" "svc" {
           value = format("redis://%s:%s", google_redis_instance.aegis.host, tostring(google_redis_instance.aegis.port))
         }
 
+        dynamic "env" {
+          for_each = each.key == "api-gateway" ? [
+            {
+              name  = "MARKET_SERVICE_GRPC_ADDR"
+              value = google_cloud_run_service.svc["market-service"].status[0].url
+            },
+            {
+              name  = "WALLET_SERVICE_GRPC_ADDR"
+              value = google_cloud_run_service.svc["wallet-service"].status[0].url
+            },
+            {
+              name  = "SETTLEMENT_SERVICE_GRPC_ADDR"
+              value = google_cloud_run_service.svc["settlement-service"].status[0].url
+            },
+            {
+              name  = "TRANSACTION_SERVICE_GRPC_ADDR"
+              value = google_cloud_run_service.svc["transaction-service"].status[0].url
+            },
+          ] : []
+          content {
+            name  = env.value.name
+            value = env.value.value
+          }
+        }
+
         resources {
           limits = {
             cpu    = var.cpu
