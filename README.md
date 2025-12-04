@@ -508,3 +508,11 @@ Generated files are written to `proto/gen` with source-relative paths.
 - Quick checks:
   - Kafka: `docker exec -it aegis-kafka-1 bash -lc 'kafka-topics.sh --bootstrap-server kafka:29092 --list'`
   - Redis: `docker exec -it aegis-redis-1 redis-cli ping`
+
+## ☁️ GCP Architecture
+![System Architecture](archi-diag/GCP_Diag.png)
+High-level view of how Aegis runs on GCP: traffic goes to the API Gateway, which calls Market, Wallet, Settlement, and Transaction services over gRPC, backed by Cloud SQL, Redis, and Kafka.
+
+## 🌐 API Diagram
+![System Architecture](archi-diag/API_Routes.png)
+High-level view of HTTP → gRPC routing: `/api/markets`, `/api/wallets`, and `/api/settlements` terminate at the API Gateway, which maps each route to the corresponding gRPC method on the backend services.
