@@ -4,6 +4,8 @@ import (
     "context"
     "fmt"
     "net"
+    "net/url"
+    "strings"
     "os"
 
     "github.com/jackc/pgx/v5/pgxpool"
@@ -39,12 +41,30 @@ func main() {
     logger := log.New()
     defer logger.Sync()
 
-    dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
-        viper.GetString("DB_USER"),
-        viper.GetString("DB_PASSWORD"),
-        viper.GetString("DB_HOST"),
-        viper.GetInt("DB_PORT"),
-        viper.GetString("DB_NAME"),
+    host := viper.GetString("DB_HOST")
+    port := viper.GetInt("DB_PORT")
+    db := viper.GetString("DB_NAME")
+    user := viper.GetString("DB_USER")
+    pass := viper.GetString("DB_PASSWORD")
+    var dsn string
+    if strings.HasPrefix(host, "/") {
+        dsn = fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable", host, port, db, user, pass)
+    } else {
+        u := &url.URL{
+            Scheme: "postgres",
+            Host: fmt.Sprintf("%s:%d", host, port),
+            Path: db,
+            RawQuery: "sslmode=disable",
+        }
+        u.User = url.UserPassword(user, pass)
+        dsn = u.String()
+    }
+
+    logger.Info("configured database connection",
+        zap.String("host", host),
+        zap.Int("port", port),
+        zap.String("db", db),
+        zap.String("user", user),
     )
 
     cfg, err := pgxpool.ParseConfig(dsn)
