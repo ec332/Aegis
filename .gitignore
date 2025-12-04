@@ -43,3 +43,5 @@ next-env.d.ts
 aegis-fe/next.config.ts
 aegis-fe/.next/
 aegis-fe/node_modules
+
+west*.json

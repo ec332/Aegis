@@ -62,6 +62,11 @@ resource "google_cloud_run_service" "main" {
       template[0].metadata[0].annotations["run.googleapis.com/client-version"],
     ]
   }
+
+  depends_on = [
+    google_project_service.run,
+    google_project_service.containerregistry,
+  ]
 }
 
 resource "google_service_account" "main" {

@@ -331,9 +331,9 @@ Deploy your Aegis microservices to Google Cloud Run using the provided Terraform
    ```bash
    terraform apply \
      -var 'project_id=my-gcp-project' \
-     -var 'region=us-central1' \
-     -var 'service_name=api-gateway' \
-     -var 'image=gcr.io/my-project/api-gateway:latest' \
+    -var 'region=asia-southeast1' \
+    -var 'service_name=api-gateway' \
+    -var 'image=asia-southeast1-docker.pkg.dev/my-project/aegis/api-gateway:latest' \
      -var 'allow_unauthenticated=true' \
      -var 'cpu=1' \
      -var 'memory=512Mi' \
@@ -351,13 +351,13 @@ Deploy your Aegis microservices to Google Cloud Run using the provided Terraform
 5. **Deploy other services** (repeat with appropriate service names and images):
    ```bash
    # Market Service
-   terraform apply -var 'service_name=market-service' -var 'image=gcr.io/my-project/market-service:latest' -var 'env_vars={REDIS_HOST="redis:6379",DB_HOST="postgres:5432"}'
+   terraform apply -var 'service_name=market-service' -var 'image=asia-southeast1-docker.pkg.dev/my-project/aegis/market-service:latest' -var 'env_vars={REDIS_HOST="redis:6379",DB_HOST="postgres:5432"}'
    
    # Wallet Service
-   terraform apply -var 'service_name=wallet-service' -var 'image=gcr.io/my-project/wallet-service:latest' -var 'env_vars={DB_HOST="postgres:5432"}'
+   terraform apply -var 'service_name=wallet-service' -var 'image=asia-southeast1-docker.pkg.dev/my-project/aegis/wallet-service:latest' -var 'env_vars={DB_HOST="postgres:5432"}'
    
    # Settlement Service
-   terraform apply -var 'service_name=settlement-service' -var 'image=gcr.io/my-project/settlement-service:latest' -var 'env_vars={DB_HOST="postgres:5432"}'
+   terraform apply -var 'service_name=settlement-service' -var 'image=asia-southeast1-docker.pkg.dev/my-project/aegis/settlement-service:latest' -var 'env_vars={DB_HOST="postgres:5432"}'
    ```
 
 #### Configuration Options
