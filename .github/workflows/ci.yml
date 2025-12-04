@@ -17,7 +17,10 @@ jobs:
         with:
           go-version: '1.22'
           cache: true
+      - name: Go Mod Tidy (root)
+        run: go mod tidy
       - name: Go Build
+        working-directory: transaction-service
         run: go build ./cmd/transaction-service
       - name: Go Test
         run: go test ./...
@@ -91,7 +94,7 @@ jobs:
           exit 1
       - name: Apply schema
         run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -d transaction -f transaction-service/sql/create.sql
+          PGPASSWORD=postgres psql -h localhost -U postgres -d transaction -f transaction-service/create.sql
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -104,6 +107,7 @@ jobs:
           APP_DB_NAME: transaction
           APP_DB_USER: postgres
           APP_DB_PASSWORD: postgres
+        working-directory: transaction-service
         run: go test -tags integration ./internal/store/postgres -v
   go-lint:
     runs-on: ubuntu-latest

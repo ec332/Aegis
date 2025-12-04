@@ -201,38 +201,8 @@ resource "google_cloud_run_service" "api_gateway" {
         ports { container_port = 8080 }
 
         env {
-          name  = "DB_HOST"
-          value = google_sql_database_instance.service["api-gateway"].ip_address[0].ip_address
-        }
-        env {
-          name  = "DB_PORT"
-          value = "5432"
-        }
-        env {
-          name  = "DB_NAME"
-          value = google_sql_database.service["api-gateway"].name
-        }
-        env {
-          name  = "DB_USER"
-          value = google_sql_user.service["api-gateway"].name
-        }
-        env {
-          name = "DATABASE_URL"
-          value_from {
-            secret_key_ref {
-              name = "db-url-api-gateway"
-              key  = "latest"
-            }
-          }
-        }
-        env {
-          name = "DB_PASSWORD"
-          value_from {
-            secret_key_ref {
-              name = "db-password-api-gateway"
-              key  = "latest"
-            }
-          }
+          name  = "PORT"
+          value = "8080"
         }
 
         env {

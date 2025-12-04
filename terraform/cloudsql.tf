@@ -5,7 +5,7 @@ resource "google_project_service" "sqladmin" {
 }
 
 resource "random_password" "db" {
-  for_each = toset(["api-gateway","market-service","wallet-service","settlement-service","transaction-service"]) 
+  for_each = toset(["market-service","wallet-service","settlement-service","transaction-service"]) 
   length   = 24
   special  = true
 }
@@ -56,7 +56,6 @@ resource "google_secret_manager_secret_version" "db_url" {
 
 locals {
   db_config = {
-    "api-gateway"       = { tier = "db-custom-1-3840" }
     "market-service"    = { tier = "db-custom-1-3840" }
     "wallet-service"    = { tier = "db-custom-1-3840" }
     "settlement-service"= { tier = "db-custom-1-3840" }
@@ -80,7 +79,7 @@ resource "google_sql_database_instance" "service" {
   depends_on = [google_service_networking_connection.private_vpc_connection, google_project_service.sqladmin]
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
 
