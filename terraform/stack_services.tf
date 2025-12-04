@@ -174,12 +174,6 @@ resource "google_cloud_run_service" "svc" {
   ]
 }
 
-resource "google_service_account" "api_gateway" {
-  account_id   = "api-gateway"
-  display_name = "Service account for api-gateway"
-  project      = var.project_id
-}
-
 resource "google_cloud_run_service" "api_gateway" {
   name     = "api-gateway"
   location = var.region
@@ -187,7 +181,7 @@ resource "google_cloud_run_service" "api_gateway" {
   template {
     spec {
       container_concurrency = var.concurrency
-      service_account_name  = google_service_account.api_gateway.email
+      service_account_name  = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 
       containers {
         image = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/api-gateway:latest"
@@ -322,4 +316,32 @@ resource "google_cloud_run_service_iam_member" "api_public" {
   location = google_cloud_run_service.api_gateway.location
   role     = "roles/run.invoker"
   member   = "allUsers"
+}
+
+resource "google_cloud_run_service_iam_member" "market_invoker" {
+  service  = google_cloud_run_service.svc["market-service"].name
+  location = google_cloud_run_service.svc["market-service"].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_cloud_run_service_iam_member" "wallet_invoker" {
+  service  = google_cloud_run_service.svc["wallet-service"].name
+  location = google_cloud_run_service.svc["wallet-service"].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_cloud_run_service_iam_member" "settlement_invoker" {
+  service  = google_cloud_run_service.svc["settlement-service"].name
+  location = google_cloud_run_service.svc["settlement-service"].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_cloud_run_service_iam_member" "transaction_invoker" {
+  service  = google_cloud_run_service.svc["transaction-service"].name
+  location = google_cloud_run_service.svc["transaction-service"].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
