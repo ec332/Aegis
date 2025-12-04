@@ -21,6 +21,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
+            echo "Missing secret GCP_SA_KEY (service account JSON)"; exit 1; fi
+          if [ -z "${{ secrets.GCP_PROJECT_ID }}" ]; then
+            echo "Missing secret GCP_PROJECT_ID (GCP project id)"; exit 1; fi
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:

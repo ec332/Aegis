@@ -375,6 +375,19 @@ Deploy your Aegis microservices to Google Cloud Run using the provided Terraform
 - Configure proper IAM roles and service accounts
 - Use Cloud Load Balancer for custom domains and SSL
 
+## CI Secrets (GitHub Actions)
+
+- Required repository secrets for the build/push workflow:
+  - `GCP_SA_KEY`: service account JSON with permissions to push images
+  - `GCP_PROJECT_ID`: your GCP project ID
+- Minimum roles for the CI service account:
+  - `roles/artifactregistry.writer`
+  - Optional (if deploying from CI): `roles/run.admin`
+  - Optional (advanced caching): `roles/storage.admin`
+- Where to set: Repository Settings → Security → Secrets and variables → Actions
+- Forks: Secrets are not passed to workflows triggered from forks (including Dependabot). Trigger via `push` on this repo or `workflow_dispatch`. Our workflow validates the presence of secrets and fails fast with a clear message.
+- Alternative: Use Workload Identity Federation. Replace `credentials_json` with `workload_identity_provider` and `service_account` in the auth step to avoid storing keys.
+
 ### Individual Service Deployment
 Each service can be deployed independently:
 ```bash
