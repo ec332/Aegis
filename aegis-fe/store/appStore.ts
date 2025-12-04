@@ -365,6 +365,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ walletTransactions: transactions });
     } catch (error) {
       console.error(`Error fetching wallet transactions for ${walletId}:`, error);
+      if (error && typeof error === 'object' && (error as APIError).status === 401) {
+        set({ walletTransactions: [] });
+        return;
+      }
       set({ error: error as APIError });
     }
   },

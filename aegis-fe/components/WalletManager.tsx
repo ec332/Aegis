@@ -252,9 +252,12 @@ export default function WalletManager({ userId }: { userId: string }) {
       )}
 
       {/* Transaction History */}
-      {walletTransactions.length > 0 && (
+      {currentWallet && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Transactions</h3>
+          {walletTransactions.length === 0 ? (
+            <p className="text-gray-500">No transactions yet. Use Deposit or Withdraw to get started.</p>
+          ) : (
           <div className="space-y-3">
             {walletTransactions.slice(-5).reverse().map((transaction) => (
               <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -312,6 +315,7 @@ export default function WalletManager({ userId }: { userId: string }) {
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
     </div>

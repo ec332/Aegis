@@ -103,7 +103,7 @@ export class APIError extends Error {
   }
 }
 
-import { getStoredToken } from "@/services/auth";
+import { getStoredToken, clearStoredToken } from "@/services/auth";
 
 async function buildApiError(response: Response): Promise<APIError> {
   const defaultMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -302,8 +302,13 @@ export async function getWalletByUserId(userId: string): Promise<WalletAccount |
     if (res.status === 404) {
       return null;
     }
+    if (res.status === 401) {
+      clearStoredToken();
+      return null;
+    }
     if (!res.ok) {
-      throw new APIError(res.status, `HTTP ${res.status}: ${res.statusText}`);
+      const err = await buildApiError(res);
+      throw err;
     }
     const data = await res.json() as { account: WalletAccount | null };
     return data.account || null;
