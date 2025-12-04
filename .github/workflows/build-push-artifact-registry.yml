@@ -36,13 +36,6 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Ensure Artifact Registry repositories
-        run: |
-          gcloud artifacts repositories describe "$REPOSITORY" --location="$REGION" || \
-          gcloud artifacts repositories create "$REPOSITORY" --repository-format=docker --location="$REGION"
-          gcloud artifacts repositories describe "$CACHE_REPOSITORY" --location="$REGION" || \
-          gcloud artifacts repositories create "$CACHE_REPOSITORY" --repository-format=docker --location="$REGION"
-
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev -q
 
@@ -55,8 +48,8 @@ jobs:
           context: .
           file: ${{ matrix.service }}/Dockerfile
           push: true
-          cache-from: type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.CACHE_REPOSITORY }}/${{ matrix.service }}:cache
-          cache-to: type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.CACHE_REPOSITORY }}/${{ matrix.service }}:cache,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.service }}:latest
             ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.service }}:${{ github.sha }}
