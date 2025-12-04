@@ -37,6 +37,18 @@ resource "google_cloud_run_service" "svc" {
           container_port = local.service_ports[each.key]
         }
 
+        env {
+          name  = "CORS_ORIGINS"
+          value = "https://aegis-psi-six.vercel.app,http://localhost:3000"
+        }
+        env {
+          name  = "CORS_METHODS"
+          value = "GET,POST,PUT,DELETE,OPTIONS"
+        }
+        env {
+          name  = "CORS_HEADERS"
+          value = "Accept,Content-Type,Authorization"
+        }
 
         env {
           name  = "DB_HOST"
