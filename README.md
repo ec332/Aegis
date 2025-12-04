@@ -2,6 +2,17 @@
 
 A decentralized prediction market platform built with Go microservices architecture, enabling users to create, trade, and settle prediction markets on various topics.
 
+## Overview
+
+- Microservices: API Gateway, Market, Wallet, Settlement, Transaction
+- Resilient gRPC clients: 1s timeouts, retries with jitter, circuit breaker, concurrent call limiting, Kafka fallback
+- API Gateway: HTTP → gRPC bridge with Redis caching, singleflight, and ETag/Last-Modified support
+- Shared libraries: `shared/grpc`, `shared/circuitbreaker`, `shared/retry`, `shared/kafka`
+- Protocol buffers: service definitions under `proto/`
+- Orchestration: `docker-compose.yml`
+- See Scalability design in `README_SCALABILITY.md`
+- See testing guides: `README_UNIT.md`, `README_INTEGRATION.md`, `README_BE_E2E.md`, `README_FE_E2E.md`, `README_COVERAGE.md`, and `tests/load/README.md`
+
 ## 🏗️ Architecture Overview
 
 The Aegis platform follows a microservices architecture with the following services:
@@ -14,33 +25,34 @@ The Aegis platform follows a microservices architecture with the following servi
    - Handles load balancing and service discovery
    - Provides unified API interface
 
-2. **Market Service** (Port 8081)
+2. **Market Service**
    - Manages prediction markets and options
    - Handles market creation, updates, and queries
    - Integrates with Redis for real-time updates
    - Manages user accounts and authentication
 
-3. **Wallet Service** (Port 8082)
+3. **Wallet Service**
    - Handles all financial transactions
    - Manages user wallet accounts and balances
    - Processes deposits, withdrawals, and transfers
    - Supports USDC currency with decimal precision
 
-4. **Settlement Service** (Port 8084)
+4. **Settlement Service**
    - Manages market settlement and payout distribution
    - Calculates winning pools and user payouts
    - Handles settlement completion and distribution
    - Integrates with wallet service for payouts
 
-5. **Transaction Service** (Port 5555)
+5. **Transaction Service**
    - Legacy service for basic transaction processing
    - Handles transaction creation and management
 
 ### Infrastructure
 
-- **PostgreSQL**: Primary database for all services
-- **Redis**: Caching and real-time updates
-- **Docker Compose**: Service orchestration and deployment
+- **PostgreSQL**: Primary database for services
+- **Redis**: Caching and response acceleration in API Gateway
+- **Kafka**: Asynchronous fallback and messaging
+- **Docker Compose**: Local orchestration
 
 ## 🚀 Quick Start
 
@@ -78,11 +90,11 @@ The Aegis platform follows a microservices architecture with the following servi
 ### Base URL
 All API requests should be made to the API Gateway:
 ```
-http://localhost:8080/api/v1/
+http://localhost:8080/api/
 ```
 
 ### Authentication
-Currently using wallet-based authentication with nonce generation.
+Development includes a dev login endpoint; production authentication is gRPC-token capable.
 
 ### Endpoints
 
@@ -93,7 +105,7 @@ Currently using wallet-based authentication with nonce generation.
 - `PUT /users/{id}` - Update user information
 
 #### Markets
-- `POST /markets` - Create a new prediction market
+- `POST /markets` - Create a new market
 - `GET /markets/{id}` - Get market details
 - `GET /markets` - List all markets
 - `PUT /markets/{id}` - Update market information
@@ -128,7 +140,7 @@ Currently using wallet-based authentication with nonce generation.
 
 #### Create a User
 ```bash
-curl -X POST http://localhost:8080/api/v1/users \
+curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
   -d '{
     "wallet_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb7",
@@ -139,7 +151,7 @@ curl -X POST http://localhost:8080/api/v1/users \
 
 #### Create a Market
 ```bash
-curl -X POST http://localhost:8080/api/v1/markets \
+curl -X POST http://localhost:8080/api/markets \
   -H "Content-Type: application/json" \
   -d '{
     "question": "Will Bitcoin price exceed $100,000 by end of 2024?",
@@ -151,7 +163,7 @@ curl -X POST http://localhost:8080/api/v1/markets \
 
 #### Create Wallet Account
 ```bash
-curl -X POST http://localhost:8080/api/v1/wallets \
+curl -X POST http://localhost:8080/api/wallets \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "user-uuid",
@@ -161,7 +173,7 @@ curl -X POST http://localhost:8080/api/v1/wallets \
 
 #### Deposit Funds
 ```bash
-curl -X POST http://localhost:8080/api/v1/wallets/{accountId}/deposit \
+curl -X POST http://localhost:8080/api/wallets/{accountId}/deposit \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 500.0,
@@ -182,6 +194,14 @@ This script will:
 - Test all API endpoints
 - Validate service communication
 - Check database connectivity
+
+### Test Guides
+- Unit tests: `README_UNIT.md`
+- Integration tests: `README_INTEGRATION.md`
+- Backend E2E: `README_BE_E2E.md`
+- Frontend E2E: `README_FE_E2E.md`
+- Coverage: `README_COVERAGE.md`
+- Load testing: `tests/load/README.md`
 
 ### Individual Service Testing
 Each service has its own health check endpoint:
@@ -264,26 +284,13 @@ CREATE TABLE settlements (
 
 ### Environment Variables
 
-Each service supports the following environment variables:
-
-#### Database Configuration
-- `DB_HOST`: PostgreSQL host (default: localhost)
-- `DB_PORT`: PostgreSQL port (default: 5432)
-- `DB_NAME`: Database name
-- `DB_USER`: Database user (default: postgres)
-- `DB_PASSWORD`: Database password (default: postgres)
-- `DB_SSLMODE`: SSL mode (default: disable)
-
-#### Service Configuration
-- `PORT`: Service port
-- `REDIS_HOST`: Redis host (for Market Service)
-- `REDIS_PORT`: Redis port (for Market Service)
-
-#### API Gateway Configuration
-- `MARKET_SERVICE_URL`: Market service URL
-- `WALLET_SERVICE_URL`: Wallet service URL
-- `SETTLEMENT_SERVICE_URL`: Settlement service URL
-- `TRANSACTION_SERVICE_URL`: Transaction service URL
+API Gateway key environment variables:
+- `MARKET_SERVICE_GRPC_ADDR`: gRPC address for Market service (e.g., `market-service:50051`)
+- `WALLET_SERVICE_GRPC_ADDR`: gRPC address for Wallet service (e.g., `wallet-service:50052`)
+- `SETTLEMENT_SERVICE_GRPC_ADDR`: gRPC address for Settlement service (e.g., `settlement-service:50053`)
+- `TRANSACTION_SERVICE_GRPC_ADDR`: gRPC address for Transaction service (e.g., `transaction-service:50052`)
+- `KAFKA_BROKERS`: comma-separated Kafka brokers (e.g., `kafka:29092`)
+- `REDIS_URL`: Redis connection URL (e.g., `redis://redis:6379`)
 
 ## 🚢 Deployment
 
@@ -297,7 +304,11 @@ docker-compose logs -f
 
 # Stop all services
 docker-compose down
+```
 
+## 📈 Scalability
+
+See `README_SCALABILITY.md` for the resilience patterns (timeouts, retries with jitter, circuit breaker, concurrent call limiting) and Kafka fallback design.
 # Rebuild and restart
 docker-compose down && docker-compose up --build -d
 ```
