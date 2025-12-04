@@ -388,6 +388,12 @@ Deploy your Aegis microservices to Google Cloud Run using the provided Terraform
 - Forks: Secrets are not passed to workflows triggered from forks (including Dependabot). Trigger via `push` on this repo or `workflow_dispatch`. Our workflow validates the presence of secrets and fails fast with a clear message.
 - Alternative: Use Workload Identity Federation. Replace `credentials_json` with `workload_identity_provider` and `service_account` in the auth step to avoid storing keys.
 
+## Enable Required Google APIs
+
+- Enable APIs once per project (owner/admin required). Terraform no longer enables Artifact Registry:
+  - `gcloud services enable run.googleapis.com compute.googleapis.com sqladmin.googleapis.com redis.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com`
+- Or use the Cloud Console API pages to enable them.
+
 ### Individual Service Deployment
 Each service can be deployed independently:
 ```bash

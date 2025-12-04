@@ -13,6 +13,7 @@ resource "google_project_service" "vpcaccess" {
 resource "google_compute_network" "aegis" {
   name                    = "aegis-net"
   auto_create_subnetworks = false
+  depends_on              = [google_project_service.compute]
 }
 
 resource "google_compute_subnetwork" "aegis" {
@@ -20,6 +21,7 @@ resource "google_compute_subnetwork" "aegis" {
   ip_cidr_range = "10.10.0.0/24"
   region        = var.region
   network       = google_compute_network.aegis.id
+  depends_on    = [google_project_service.compute]
 }
 
 resource "google_compute_global_address" "private_range" {
@@ -28,6 +30,7 @@ resource "google_compute_global_address" "private_range" {
   address_type  = "INTERNAL"
   prefix_length = 16
   network       = google_compute_network.aegis.id
+  depends_on    = [google_project_service.compute]
 }
 
 resource "google_project_service" "servicenetworking" {
@@ -38,7 +41,7 @@ resource "google_project_service" "servicenetworking" {
 
 resource "google_service_networking_connection" "private_vpc_connection" {
   network                 = google_compute_network.aegis.id
-  service                 = "services.googleapis.com"
+  service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_range.name]
   depends_on              = [google_project_service.servicenetworking]
 }
@@ -49,5 +52,12 @@ resource "google_vpc_access_connector" "aegis" {
   network       = google_compute_network.aegis.name
   ip_cidr_range = "10.8.0.0/28"
   depends_on    = [google_project_service.vpcaccess]
-}
+  min_throughput = 200
+  max_throughput = 300
 
+  lifecycle {
+    ignore_changes = [
+      machine_type,
+    ]
+  }
+}

@@ -1,11 +1,11 @@
 output "service_url" {
   description = "URL of the deployed Cloud Run service"
-  value       = google_cloud_run_service.main.status[0].url
+  value       = try(google_cloud_run_service.main[0].status[0].url, null)
 }
 
 output "service_name" {
   description = "Name of the Cloud Run service"
-  value       = google_cloud_run_service.main.name
+  value       = try(google_cloud_run_service.main[0].name, null)
 }
 
 output "service_account_email" {

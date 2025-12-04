@@ -64,7 +64,7 @@ docker push asia-southeast1-docker.pkg.dev/<PROJECT_ID>/aegis/api-gateway:latest
 
 ## What to Expect
 
-- Resources created: VPC, VPC connector, per‑service Cloud SQL (private IP), Redis, five Cloud Run services, AR repos.
+- Resources created: VPC, VPC connector, per‑service Cloud SQL (private IP), Redis, five Cloud Run services. Artifact Registry repos are managed outside of Terraform (CI/Console).
 - Verify the gateway:
   ```bash
   curl https://<api-gateway-url>/health
@@ -75,3 +75,7 @@ docker push asia-southeast1-docker.pkg.dev/<PROJECT_ID>/aegis/api-gateway:latest
 - Image not found: ensure AR image exists and tag matches.
 - Permission denied: verify service account roles listed above.
 - Unauthenticated errors: set `allow_unauthenticated=true` for public endpoints or grant `roles/run.invoker` to callers.
+- API enablement: enable required APIs once via Console or CLI:
+  ```bash
+  gcloud services enable run.googleapis.com compute.googleapis.com sqladmin.googleapis.com redis.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com
+  ```

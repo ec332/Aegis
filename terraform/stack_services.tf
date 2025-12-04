@@ -1,10 +1,17 @@
 locals {
   service_images = {
     api-gateway        = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/api-gateway:latest"
-    market-service     = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/market-service:latest"
-    wallet-service     = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/wallet-service:latest"
-    settlement-service = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/settlement-service:latest"
+    market-service     = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/market:latest"
+    wallet-service     = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/wallet:latest"
+    settlement-service = "${var.region}-docker.pkg.dev/${var.project_id}/aegis/settlement:latest"
     transaction-service= "${var.region}-docker.pkg.dev/${var.project_id}/aegis/transaction-service:latest"
+  }
+  service_ports = {
+    api-gateway        = 8080
+    market-service     = 50051
+    wallet-service     = 50052
+    settlement-service = 50053
+    transaction-service= 50052
   }
 }
 
@@ -28,6 +35,11 @@ resource "google_cloud_run_service" "svc" {
       containers {
         image = each.value
 
+        ports {
+          container_port = local.service_ports[each.key]
+        }
+
+
         env {
           name  = "DB_HOST"
           value = google_sql_database_instance.service[each.key].ip_address[0].ip_address
@@ -46,12 +58,66 @@ resource "google_cloud_run_service" "svc" {
         }
 
         env {
+          name = "DATABASE_URL"
+          value_from {
+            secret_key_ref {
+              name = "db-url-${each.key}"
+              key  = "latest"
+            }
+          }
+        }
+        env {
+          name = "DB_PASSWORD"
+          value_from {
+            secret_key_ref {
+              name = "db-password-${each.key}"
+              key  = "latest"
+            }
+          }
+        }
+        env {
+          name = "WALLET_DATABASE_URL"
+          value_from {
+            secret_key_ref {
+              name = "db-url-${each.key}"
+              key  = "latest"
+            }
+          }
+        }
+        env {
+          name = "APP_DB_PASSWORD"
+          value_from {
+            secret_key_ref {
+              name = "db-password-${each.key}"
+              key  = "latest"
+            }
+          }
+        }
+
+        env {
+          name  = "GRPC_PORT"
+          value = tostring(local.service_ports[each.key])
+        }
+        env {
+          name  = "WALLET_SERVICE_PORT"
+          value = tostring(local.service_ports[each.key])
+        }
+        env {
+          name  = "APP_GRPC_PORT"
+          value = tostring(local.service_ports[each.key])
+        }
+
+        env {
           name  = "REDIS_HOST"
           value = google_redis_instance.aegis.host
         }
         env {
           name  = "REDIS_PORT"
           value = tostring(google_redis_instance.aegis.port)
+        }
+        env {
+          name  = "REDIS_URL"
+          value = format("redis://%s:%s", google_redis_instance.aegis.host, tostring(google_redis_instance.aegis.port))
         }
 
         resources {
@@ -64,15 +130,31 @@ resource "google_cloud_run_service" "svc" {
     }
 
     metadata {
-      annotations = {
-        "autoscaling.knative.dev/maxScale" = var.max_instances != null ? tostring(var.max_instances) : "100"
-        "autoscaling.knative.dev/minScale" = var.min_instances != null ? tostring(var.min_instances) : "0"
-        "run.googleapis.com/ingress"       = var.ingress
-        "run.googleapis.com/secrets"       = "DB_PASSWORD=db-password-${each.key}:latest"
-        "run.googleapis.com/vpc-access-connector" = google_vpc_access_connector.aegis.name
-      }
+      annotations = merge(
+        {
+          "run.googleapis.com/vpc-access-connector" = "projects/${var.project_id}/locations/${var.region}/connectors/${google_vpc_access_connector.aegis.name}"
+          "run.googleapis.com/vpc-access-egress"    = "private-ranges-only"
+        },
+        (
+          var.max_instances != null
+          ? { "autoscaling.knative.dev/maxScale" = tostring(var.max_instances) }
+          : {}
+        ),
+        (
+          var.min_instances != null
+          ? { "autoscaling.knative.dev/minScale" = tostring(var.min_instances) }
+          : {}
+        )
+      )
       labels = var.labels
     }
+  }
+
+  metadata {
+    annotations = {
+      "run.googleapis.com/ingress" = var.ingress
+    }
+    labels = var.labels
   }
 
   traffic {
@@ -83,13 +165,11 @@ resource "google_cloud_run_service" "svc" {
 
   depends_on = [
     google_project_service.run,
-    google_project_service.artifactregistry,
     google_project_service.compute,
     google_project_service.vpcaccess,
     google_project_service.sqladmin,
     google_project_service.redis,
     google_project_service.secretmanager,
-    google_artifact_registry_repository.aegis,
     google_vpc_access_connector.aegis,
   ]
 }
@@ -100,4 +180,3 @@ resource "google_cloud_run_service_iam_member" "api_public" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
-

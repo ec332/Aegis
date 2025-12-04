@@ -1,5 +1,6 @@
 # Cloud Run service resource
 resource "google_cloud_run_service" "main" {
+  count    = var.enable_single_service && var.service_name != "" && var.image != "" ? 1 : 0
   name     = var.service_name
   location = var.region
 
@@ -38,15 +39,27 @@ resource "google_cloud_run_service" "main" {
 
     metadata {
       annotations = merge(
-        {
-          "autoscaling.knative.dev/maxScale" = var.max_instances != null ? tostring(var.max_instances) : "100"
-          "autoscaling.knative.dev/minScale" = var.min_instances != null ? tostring(var.min_instances) : "0"
-          "run.googleapis.com/ingress"       = var.ingress
-        },
+        (
+          var.max_instances != null
+          ? { "autoscaling.knative.dev/maxScale" = tostring(var.max_instances) }
+          : {}
+        ),
+        (
+          var.min_instances != null
+          ? { "autoscaling.knative.dev/minScale" = tostring(var.min_instances) }
+          : {}
+        ),
         var.annotations
       )
       labels = var.labels
     }
+  }
+
+  metadata {
+    annotations = {
+      "run.googleapis.com/ingress" = var.ingress
+    }
+    labels = var.labels
   }
 
   traffic {
@@ -70,12 +83,12 @@ resource "google_cloud_run_service" "main" {
 }
 
 resource "google_service_account" "main" {
-  count        = var.service_account_email == "" ? 1 : 0
+  count        = var.enable_single_service && var.service_account_email == "" ? 1 : 0
   account_id   = "${var.service_name}-sa"
   display_name = "Service account for ${var.service_name}"
   project      = var.project_id
 }
 
 locals {
-  service_account_email = var.service_account_email != "" ? var.service_account_email : google_service_account.main[0].email
+  service_account_email = var.service_account_email != "" ? var.service_account_email : (var.enable_single_service && length(google_service_account.main) > 0 ? google_service_account.main[0].email : "")
 }

@@ -11,11 +11,13 @@ variable "region" {
 variable "service_name" {
   type        = string
   description = "Cloud Run service name"
+  default     = ""
 }
 
 variable "image" {
   type        = string
   description = "Container image URI (e.g., gcr.io/my-project/my-image:tag)"
+  default     = ""
 }
 
 variable "allow_unauthenticated" {
@@ -95,3 +97,11 @@ variable "annotations" {
   description = "Annotations to apply to the service"
   default     = {}
 }
+
+variable "enable_single_service" {
+  type        = bool
+  description = "Enable single-service deployment via main.tf"
+  default     = false
+}
+
+ 

@@ -18,12 +18,40 @@ resource "google_secret_manager_secret" "db_password" {
       replicas { location = var.region }
     }
   }
+  depends_on = [google_project_service.secretmanager]
 }
 
 resource "google_secret_manager_secret_version" "db_password" {
   for_each    = random_password.db
   secret      = google_secret_manager_secret.db_password[each.key].id
   secret_data = each.value.result
+  depends_on  = [google_project_service.secretmanager]
+}
+
+# Compose full DATABASE_URL and store as a secret per service
+resource "google_secret_manager_secret" "db_url" {
+  for_each  = random_password.db
+  secret_id = "db-url-${each.key}"
+  replication {
+    user_managed {
+      replicas { location = var.region }
+    }
+  }
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "db_url" {
+  for_each = random_password.db
+  secret   = google_secret_manager_secret.db_url[each.key].id
+  secret_data = format(
+    "postgres://%s:%s@%s:%d/%s?sslmode=disable",
+    google_sql_user.service[each.key].name,
+    urlencode(random_password.db[each.key].result),
+    google_sql_database_instance.service[each.key].ip_address[0].ip_address,
+    5432,
+    google_sql_database.service[each.key].name,
+  )
+  depends_on = [google_project_service.secretmanager]
 }
 
 locals {
@@ -50,6 +78,10 @@ resource "google_sql_database_instance" "service" {
     }
   }
   depends_on = [google_service_networking_connection.private_vpc_connection, google_project_service.sqladmin]
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_sql_database" "service" {
@@ -64,4 +96,3 @@ resource "google_sql_user" "service" {
   name     = "appuser"
   password = random_password.db[each.key].result
 }
-
